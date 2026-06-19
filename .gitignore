@@ -1,0 +1,55 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.pyc
+.Python
+*.egg-info/
+*.egg
+.eggs/
+
+# Virtual environments
+venv/
+.venv/
+env/
+ENV/
+
+# PyInstaller build artifacts
+build/
+dist/
+*.spec.bak
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Data outputs (generated files, not source)
+data/output_files/
+data/output_images/
+
+# Automation screenshots / diagnostics
+**/app_shots/
+**/shots/
+
+# Temporary export directories
+*_export/
+
+# Local config overrides
+*.local.py
+
+# Development / exploration scripts (not part of the distributable)
+generate_graph.py
+hoboware_export.py
+portalo_export.py
+portalo_graphs.py
+handle_dialog.py
+set_export_folder.py
+close_and_rename.py

@@ -1,0 +1,32 @@
+# T-MEDNet Desktop — Python dependencies
+# Install with:  pip install -r requirements.txt
+
+# ---- GUI framework ----
+PyQt6>=6.4.0
+PyQt6-Qt6>=6.4.0
+
+# ---- Plotting ----
+matplotlib>=3.6.0
+matplotlib-label-lines>=0.5.1
+
+# ---- Data science ----
+pandas>=1.5.0
+numpy>=1.23.0
+scipy>=1.9.0
+
+# ---- File formats / export ----
+XlsxWriter>=3.0.2
+geojson>=3.0.0
+netCDF4>=1.6.0
+xarray>=2022.6.0
+
+# ---- Reports ----
+fpdf2>=2.5.0
+Pillow>=9.0.0
+
+# ---- Utilities ----
+pytz>=2022.1
+python-dateutil>=2.8.2
+
+# ---- Packaging (optional — only for building the executable) ----
+# pyinstaller>=5.13.0
