@@ -304,6 +304,68 @@ Desktop\
 
 ---
 
+## Paso 11 — Subir los resultados al servidor T-MEDNet
+
+Una vez generadas las gráficas y la base de datos actualizada, hay que subirlas al servidor para que estén disponibles en la web de T-MEDNet.
+
+### 11.1 — Acceder al explorador de archivos
+
+Vuelve al panel de administración de T-MEDNet:
+
+> `https://t-mednet.org/administrator/` → **Projects** → clic en **View files** de la estación correspondiente
+
+### 11.2 — Usar el botón Upload
+
+En la parte superior del explorador de archivos verás el botón **Upload**. Al hacer clic se abre un formulario donde puedes:
+
+1. **Seleccionar el archivo** desde tu ordenador
+2. **Escribir el nombre** con el que quedará guardado en el servidor
+3. **Elegir la carpeta de destino** (`public` o `t-outputs`)
+4. Confirmar la subida
+
+### 11.3 — Qué subir a cada carpeta
+
+#### Carpeta `public` — Gráficas PNG
+
+Sube todas las imágenes `.png` generadas. El nombre que debes usar en el servidor sigue este formato:
+
+```
+[código]_[tipo]_[año]_[nombre_sitio]_[fecha_generación].png
+```
+
+Los tipos de gráfica son:
+
+| Nº | Tipo de gráfica | Archivo generado por el script |
+|----|-----------------|-------------------------------|
+| `1` | Ciclo anual de temperatura | `*_annual_T_cycle_*.png` |
+| `2` | Anomalía | `*_anomaly_*.png` |
+| `3` | Estratificación | `*_stratification_*.png` |
+| `3_23` | Umbral 23 °C | `*_thresholds_23C_*.png` |
+| `3_24` | Umbral 24 °C | `*_thresholds_24C_*.png` |
+| `3_25` | Umbral 25 °C | `*_thresholds_25C_*.png` |
+| `3_26` | Umbral 26 °C | `*_thresholds_26C_*.png` |
+| `3_27` | Umbral 27 °C | `*_thresholds_27C_*.png` |
+
+**Ejemplo** (Medes, ciclo anual 2025, generado el 28 de junio de 2026):
+```
+06_1_2025_Medes_2026-06-28.png
+```
+
+> **Tip:** consulta los archivos que ya hay en la carpeta `public` de esa estación para ver el formato exacto que se ha usado en subidas anteriores y replicarlo.
+
+#### Carpeta `t-outputs` — Base de datos y Excel
+
+Sube los dos archivos de datos generados:
+
+| Archivo a subir | Nombre en el servidor |
+|-----------------|-----------------------|
+| `Database_T_[código]_[sitio]_[fechas]_[hoy].zip` | Mantén el mismo nombre del archivo generado |
+| `[código]_Stat_Report_[sitio]_[fechas]_[hoy].xlsx` | Mantén el mismo nombre del archivo generado |
+
+Estos archivos reemplazan a los anteriores — son la versión actualizada de la base de datos de la estación.
+
+---
+
 ## Errores frecuentes y cómo solucionarlos
 
 ### ❌ `FileNotFoundError: ... Database_T_... .zip`
