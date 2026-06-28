@@ -83,7 +83,46 @@ copernicusmarine login
 
 ---
 
-## Paso 5 — Qué archivos necesitas para cada estación
+## Paso 5 — Descargar los archivos del servidor T-MEDNet
+
+Los archivos `.hobo` que suben los investigadores de campo, así como las bases de datos y los Excels anteriores, están disponibles en el panel de administración de T-MEDNet:
+
+> **URL:** `https://t-mednet.org/administrator/`  
+> Necesitas usuario y contraseña de administrador T-MEDNet para acceder.
+
+### 5.1 — La lista de proyectos
+
+Al entrar verás la lista de todas las estaciones de la red. Fíjate en la columna **Files**:
+
+- 🟢 **Punto verde** — no hay archivos nuevos pendientes de procesar
+- 🔴 **Punto rojo** — hay archivos nuevos subidos por el equipo de campo (hay que procesarlos)
+
+Cuando veas un punto rojo en una estación, es la señal de que hay datos nuevos para generar las gráficas.
+
+### 5.2 — Entrar al explorador de archivos
+
+Haz clic en **View files** (en la misma fila de la estación) para ver todos los archivos de esa estación.
+
+Dentro del explorador verás tres tipos de carpetas (`Directory`):
+
+| Directorio | Contenido |
+|------------|-----------|
+| `uploads` | Archivos `.hobo` subidos por el equipo de campo ← **los que necesitas descargar** |
+| `t-outputs` | Base de datos histórica (`Database_T_*.zip`) e informes Excel (`Stat_Report_*.xlsx`) ← **también los necesitas** |
+| `public` | Gráficas ya generadas y publicadas (PNGs) |
+
+### 5.3 — Descargar los archivos más recientes
+
+1. **Ordena por fecha** haciendo clic en la cabecera **Date created** — los más recientes aparecerán arriba
+2. Descarga **todos los archivos `.hobo`** del directorio `uploads` con fecha posterior a la última vez que generaste las gráficas
+3. Descarga también el **`Database_T_*.zip` más reciente** del directorio `t-outputs` (es la base de datos histórica que necesitarás en el Paso 7)
+4. Opcionalmente, descarga el **`Stat_Report_*.xlsx` más reciente** como referencia
+
+> **Tip:** si hay varios archivos `.hobo` para la misma estación (una por cada profundidad de sensor), descárgalos todos — cada uno corresponde a un sensor a una profundidad diferente.
+
+---
+
+## Paso 6 — Qué archivos necesitas para cada estación
 
 Para generar las gráficas de una estación necesitas **dos tipos de archivos**:
 
@@ -122,7 +161,7 @@ Si recibes los archivos `.hobo` directamente del equipo de campo, tienes que con
 
 > ⚠️ **Importante:** si el formato de fecha es incorrecto (por ejemplo `dd/MM/yy` en vez de `MM/dd/yy`) los datos de temperatura aparecerán desplazados en el tiempo. Comprueba siempre este ajuste.
 
-**4. Selecciona la carpeta de salida** — usa la carpeta que corresponde a la estación (ver tabla en el Paso 6).
+**4. Selecciona la carpeta de salida** — usa la carpeta que corresponde a la estación (ver tabla en el Paso 7).
 
 **5. Haz clic en "Exportar"** — HOBOware creará un archivo `.txt` por cada archivo `.hobo`.
 
@@ -142,7 +181,7 @@ Es el archivo `Database_T_[codigo]_[sitio]_[fechas].zip` de la campaña anterior
 
 ---
 
-## Paso 6 — Dónde poner los archivos
+## Paso 7 — Dónde poner los archivos
 
 Cada estación tiene su propia carpeta esperada. Crea las carpetas que correspondan dentro de tu carpeta `Descargas` y copia los archivos allí.
 
@@ -176,7 +215,7 @@ C:\Users\TU_NOMBRE\
 
 ---
 
-## Paso 7 — Adaptar las rutas del script a tu ordenador
+## Paso 8 — Adaptar las rutas del script a tu ordenador
 
 Los scripts tienen las rutas configuradas para el ordenador original. Si tu nombre de usuario de Windows es distinto de `jahan`, tienes que cambiarlas.
 
@@ -210,7 +249,7 @@ SST_CSV  = r"C:\Users\maria\Downloads\Medes\medes_sst_copernicus.csv"
 
 ---
 
-## Paso 8 — Ejecutar el script
+## Paso 9 — Ejecutar el script
 
 1. Abre el **Símbolo del sistema**
 2. Navega a la carpeta del código:
@@ -236,7 +275,7 @@ Verás mensajes de progreso en la pantalla. El script puede tardar **entre 1 y 5
 
 ---
 
-## Paso 9 — Resultados
+## Paso 10 — Resultados
 
 Cuando el script termine, encontrarás todos los resultados en tu **Escritorio**, dentro de `temperatures t-mednet\[Nombre de la estación]\`:
 
