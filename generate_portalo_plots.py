@@ -1,20 +1,20 @@
 """
-Generates all T-MEDNet plots for Toulon / Cap Sicié (site 38):
+Generates all T-MEDNet plots for Cap de Creus-N / Portalo (site 7):
   T-Cycle, Anomaly, Stratification, Thresholds 23-27°C  (per year)
   Database_T .zip  +  Stat_Report .xlsx  (merged full history)
 
 Data sources:
-  Historical DB:   Toulon_(Cap Sicié)/Database_T_38_Cap Sicié_201401-202605_...zip
-  HOBO campaign:   Toulon_(Cap Sicié)/Procesados  (Jul 3 – Sep 3 2026, depths 5-50 m)
+  Historical DB:   Cape-Creus-N_(Portalo)/Database_T_7_Cap de Creus-N_200705-202605_...zip
+  HOBO campaign:   Cape-Creus-N_(Portalo)/Procesados  (May 29 – Sep 25 2026, depths 10-40 m)
 
-Output:  Desktop/temperatures t-mednet/Cap Sicie/
+Output:  Desktop/temperatures t-mednet/Cap de Creus-N/
            2025/  -->  T-Cycle, anomaly, stratification, thresholds 23-27°C
            2026/  -->  T-Cycle, anomaly, stratification, thresholds 23-27°C
-           Database_T_38_Cap_Sicie_..._<date>.zip
-           38_Stat_Report_Cap_Sicie_..._<date>.xlsx
+           Database_T_7_Cap_de_Creus-N_..._<date>.zip
+           7_Stat_Report_Cap_de_Creus-N_..._<date>.xlsx
 """
 
-import os, sys, zipfile, shutil, unicodedata
+import os, sys, zipfile, shutil
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'core'))
 
 import numpy as np
@@ -30,28 +30,21 @@ from data_manager import DataManager
 import re as _re
 
 # ── Config ────────────────────────────────────────────────────────────────────
-SITE_NAME   = "Cap Sicié"
-SITE_CODE   = 38
-MHW_CLIM_START = 2015
+SITE_NAME   = "Cap de Creus-N"
+SITE_CODE   = 7
+MHW_CLIM_START = 2008
 MHW_CLIM_END   = 2022
-HIST_ZIP    = r"C:\Users\jahan\Desktop\Tmednet datos\Toulon_(Cap Sicié)\Database_T_38_Cap Sicié_201401-202605_2026-06-28_2026-07-28.zip"
-HOBO_DIR    = r"C:\Users\jahan\Desktop\Tmednet datos\Toulon_(Cap Sicié)\Procesados"
-LAT, LON    = 43.073, 5.854
+HIST_ZIP    = r"C:\Users\jahan\Desktop\Tmednet datos\Cape-Creus-N_(Portalo)\Database_T_7_Cap de Creus-N_200705-202605_2026-06-28_2026-07-28.zip"
+HOBO_DIR    = r"C:\Users\jahan\Desktop\Tmednet datos\Cape-Creus-N_(Portalo)\Procesados"
+LAT, LON    = 42.317, 3.308
 OUTPUT_BASE = os.path.join(os.path.expanduser("~"),
-                           "Desktop", "temperatures t-mednet", "Cap Sicie")
-SST_CSV     = os.path.join(OUTPUT_BASE, "toulon_sst_copernicus.csv")
+                           "Desktop", "temperatures t-mednet", SITE_NAME)
+SST_CSV     = os.path.join(OUTPUT_BASE, "portalo_sst_copernicus.csv")
 DPI         = 150
 
-# ASCII version of site name for filenames (strips accent from é)
-def _ascii(s):
-    return unicodedata.normalize('NFKD', s).encode('ascii', 'ignore').decode('ascii')
-
-SITE_NAME_FILE = _ascii(SITE_NAME).replace(' ', '_').replace('-', '_')  # Cap_Sicie
-
 COLOR_DICT = {
-    '5':  '#e8504a', '10': '#f58e6e', '15': '#fca95a', '20': '#fde5a3',
+    '10': '#f58e6e', '15': '#fca95a', '20': '#fde5a3',
     '25': '#e4f4f8', '30': '#a7d6e7', '35': '#9ec6de', '40': '#3a6daf',
-    '45': '#2a5091', '50': '#1a3070',
 }
 plt.rc('legend', fontsize='medium')
 
@@ -89,7 +82,7 @@ def load_hobo_dir(folder):
     return df_all.sort_index()
 
 def read_database_t_zip(zip_path):
-    tmp = os.path.join(os.environ['TEMP'], '_toulon_hist_extract')
+    tmp = os.path.join(os.environ['TEMP'], '_portalo_hist_extract')
     os.makedirs(tmp, exist_ok=True)
     with zipfile.ZipFile(zip_path, 'r') as zf:
         zf.extractall(tmp)
@@ -110,7 +103,6 @@ def read_database_t_zip(zip_path):
 # ── 1. Load data ──────────────────────────────────────────────────────────────
 print("Cargando Database_T historico...")
 df_hist = read_database_t_zip(HIST_ZIP)
-HIST_START_YEAR = df_hist.index.year.min()
 print(f"  {df_hist.index[0]} --> {df_hist.index[-1]}  ({len(df_hist)} filas)")
 print(f"  Profundidades: {list(df_hist.columns)}")
 
@@ -119,7 +111,7 @@ df_hobo = load_hobo_dir(HOBO_DIR)
 print(f"  {df_hobo.index[0]} --> {df_hobo.index[-1]}  ({len(df_hobo)} filas)")
 print(f"  Profundidades: {sorted(df_hobo.columns.tolist(), key=int)}")
 
-# ── 2. Merge historico + HOBO ─────────────────────────────────────────────────
+# ── 2. Merge historico + HOBO (full dataset, dedup keep newest) ───────────────
 all_depth_cols = sorted(
     {c for src in [df_hist, df_hobo] for c in src.columns},
     key=int)
@@ -149,6 +141,7 @@ if sst_series is None:
     print("\nDescargando SST Copernicus...")
     try:
         import copernicusmarine
+        # Use a wider search box to handle coastal land-masking
         ds = copernicusmarine.open_dataset(
             dataset_id="SST_MED_SST_L4_NRT_OBSERVATIONS_010_004_c_V2",
             variables=["analysed_sst"],
@@ -156,7 +149,7 @@ if sst_series is None:
             minimum_latitude=LAT - 0.4,  maximum_latitude=LAT + 0.4,
             start_datetime="2025-01-01", end_datetime="2026-10-01",
         )
-        # Snap to nearest non-land-masked pixel
+        # Snap to nearest non-land-masked pixel (avoids coastal land mask issue)
         sst_grid = ds["analysed_sst"]
         sst_mean = sst_grid.mean(dim='time')
         lats = ds.latitude.values
@@ -208,9 +201,10 @@ def plot_annual_T_cycle(df_year, year, out_dir, hist_df=None):
     fig = plt.figure(figsize=(10, 5))
     ax  = fig.add_subplot(111)
 
+    # ── Multi-year mean ───────────────────────────────────────────────────────
     if hist_df is not None and not hist_df.empty:
         clim_raw = hist_df[hist_df.index.year < yr]
-        avail = [c for c in all_depth_cols if c in clim_raw.columns]
+        avail = [c for c in all_depth_cols if c in clim_raw.columns and c != '0']
         if not clim_raw.empty and avail:
             clim_raw2 = clim_raw[avail].copy()
             clim_raw2['_m'] = clim_raw2.index.month
@@ -244,14 +238,16 @@ def plot_annual_T_cycle(df_year, year, out_dir, hist_df=None):
                 ax.text(0.1, 0.1, "multi-year mean", backgroundcolor='grey',
                         transform=ax.transAxes, color='white', fontsize=9)
 
-    plot_cols = [c for c in all_depth_cols if c in df_year.columns]
+    # ── Current year (NaN-preserving smooth) ─────────────────────────────────
+    plot_cols = [c for c in all_depth_cols if c in df_year.columns and c != '0']
     for col in plot_cols:
         col_full = df_year[col] if col in df_year.columns else pd.Series(dtype=float)
-        if col_full.dropna().empty:
+        nona = col_full.dropna()
+        if nona.empty:
             continue
         color = COLOR_DICT.get(col, '#333333')
-        # Rolling mean respects NaN boundaries — avoids smoothing across data gaps
-        smoothed = col_full.rolling(window=360, center=True, min_periods=30).mean()
+        smoothed_vals = uniform_filter1d(nona.values, size=min(360, len(nona)))
+        smoothed = pd.Series(smoothed_vals, index=nona.index).reindex(col_full.index)
         ax.plot(smoothed.index, smoothed.values, color=color, label=col, zorder=10)
 
     vals = df_year[plot_cols].values.flatten()
@@ -266,9 +262,8 @@ def plot_annual_T_cycle(df_year, year, out_dir, hist_df=None):
     ax.xaxis.set_major_formatter(mdates.DateFormatter('%b'))
 
     t0, t1 = df_year.index[0], df_year.index[-1]
-    slug = _ascii(SITE_NAME).lower().replace(' ', '_')
     out = os.path.join(out_dir,
-        f"{slug}_{SITE_CODE}_annual_T_cycle"
+        f"{SITE_NAME.lower().replace(' ','_')}_{SITE_CODE}_annual_T_cycle"
         f"_{t0.strftime('%Y%m%d')}_{t1.strftime('%Y%m%d')}.png")
     _save(fig, out, dpi=DPI, bbox_inches='tight')
     plt.close(fig)
@@ -293,7 +288,7 @@ def plot_anomaly(df_year, year, out_dir, hist_df=None):
     concated = None
 
     for depth in depths_anom:
-        clim_lbl = f"{HIST_START_YEAR}-{target_year-1} Climatology ({depth}m)"
+        clim_lbl = f"2007-{target_year-1} Climatology ({depth}m)"
         curr_lbl = f"{target_year} ({depth}m)"
         last_legend_dict[depth] = clim_lbl
         this_legend_dict[depth] = curr_lbl
@@ -378,9 +373,8 @@ def plot_anomaly(df_year, year, out_dir, hist_df=None):
               labels=['Multi-Year Mean', '[+] anomaly', '[-] anomaly'])
 
     t0, t1 = df_year.index[0], df_year.index[-1]
-    slug = _ascii(SITE_NAME).lower().replace(' ', '_')
     out = os.path.join(out_dir,
-        f"{slug}_{SITE_CODE}_anomaly"
+        f"{SITE_NAME.lower().replace(' ','_')}_{SITE_CODE}_anomaly"
         f"_{t0.strftime('%Y%m%d')}_{t1.strftime('%Y%m%d')}.png")
     _save(fig, out, dpi=DPI, bbox_inches='tight')
     plt.close(fig)
@@ -392,9 +386,9 @@ def plot_stratification(df_year, year, out_dir):
     t_may = pd.Timestamp(f'{yr}-05-01')
     t_dec = pd.Timestamp(f'{yr}-12-01')
 
-    in_situ_dcols = [c for c in df_year.columns
-                     if c.strip().lstrip('-').isdigit()]
-    df_sst, depth_cols_with_sst = _add_sst(df_year, in_situ_dcols)
+    # Add SST (0m) layer
+    df_sst, depth_cols_with_sst = _add_sst(df_year,
+        [c for c in df_year.columns if c.strip().lstrip('-').isdigit()])
     df_window = df_sst[(df_sst.index >= t_may) & (df_sst.index < t_dec)]
 
     plot_dcols = [c for c in depth_cols_with_sst if df_window[c].notna().any()] \
@@ -403,7 +397,7 @@ def plot_stratification(df_year, year, out_dir):
 
     fig = plt.figure(figsize=(10, 5))
     ax  = fig.add_subplot(111)
-    max_depth = float(depths_num[-1]) if len(depths_num) else 50.0
+    max_depth = float(depths_num[-1]) if len(depths_num) else 40.0
     ax.set_ylim(0, -max_depth)
     ax.invert_yaxis()
     if len(depths_num):
@@ -412,18 +406,15 @@ def plot_stratification(df_year, year, out_dir):
 
     if not df_window.empty and plot_dcols:
         df_plot = df_window[plot_dcols].copy()
-        # Clip pre-deployment spikes (Cap Sicié never exceeds 30°C)
-        df_plot[df_plot > 30] = np.nan
-        # Fill only 1 consecutive missing depth level from valid neighbors
-        # (limit=1 → SST at 0m fills 5m during gap; 10m+ stays blank — no over-extrapolation)
-        df_plot = df_plot.interpolate(method='linear', axis=1, limit=1)
+        # Interpolate missing depth levels (e.g. no 5m sensor during HOBO → fill from SST/10m)
+        df_plot = df_plot.interpolate(method='linear', axis=1, limit=2)
+        # Fill short sensor dropouts (≤12 h) along the time axis
         df_plot = df_plot.interpolate(method='linear', axis=0, limit=12)
         hmin, hmax = np.nanmin(df_plot.values), np.nanmax(df_plot.values)
         lv2 = np.arange(np.floor(hmin), hmax, 0.1)
         lv1 = np.arange(np.floor(hmin), hmax, 1)
-        data_masked = np.ma.masked_invalid(df_plot.values.T)
         cf = ax.contourf(df_plot.index.to_pydatetime(), -depths_num,
-                         data_masked, 256, extend='both',
+                         df_plot.values.T, 256, extend='both',
                          cmap='RdYlBu_r', levels=lv2)
         plt.colorbar(cf, ax=ax, label='Temperature (ºC)', ticks=lv1)
 
@@ -433,9 +424,8 @@ def plot_stratification(df_year, year, out_dir):
     ax.xaxis.tick_top()
 
     t0, t1 = df_year.index[0], df_year.index[-1]
-    slug = _ascii(SITE_NAME).lower().replace(' ', '_')
     out = os.path.join(out_dir,
-        f"{slug}_{SITE_CODE}_stratification"
+        f"{SITE_NAME.lower().replace(' ','_')}_{SITE_CODE}_stratification"
         f"_{t0.strftime('%Y%m%d')}_{t1.strftime('%Y%m%d')}.png")
     _save(fig, out, dpi=DPI, bbox_inches='tight')
     plt.close(fig)
@@ -537,9 +527,8 @@ def plot_thresholds(df_year, year, out_dir, hist_df=None):
                title=f'{SITE_NAME}  Summer (JAS) days >= {thr}C  {target_year}')
 
         t0, t1 = df_year.index[0], df_year.index[-1]
-        slug = _ascii(SITE_NAME).lower().replace(' ', '_')
         out = os.path.join(out_dir,
-            f"{slug}_{SITE_CODE}_thresholds_{thr}C"
+            f"{SITE_NAME.lower().replace(' ','_')}_{SITE_CODE}_thresholds_{thr}C"
             f"_{t0.strftime('%Y%m%d')}_{t1.strftime('%Y%m%d')}.png")
         _save(fig, out, dpi=DPI, bbox_inches='tight')
         plt.close(fig)
@@ -555,18 +544,7 @@ for year in [2025, 2026]:
     if df_year.empty:
         print(f"\nYear {year}: sin datos — omitido")
         continue
-    # Detect data gaps > 7 days (before resampling, on the raw timestamps)
-    raw_gaps = df_year.index.to_series().diff()
-    big_gaps = raw_gaps[raw_gaps > pd.Timedelta('7D')]
-    if not big_gaps.empty:
-        for gap_end, dur in big_gaps.items():
-            gap_start = gap_end - dur
-            print(f"  AVISO — Sin datos: {gap_start.strftime('%d %b')} → "
-                  f"{gap_end.strftime('%d %b %Y')} ({int(dur.days)} días) — se mostrará en blanco")
-    # Resample to hourly — gaps become explicit NaN rows so plots show blank
-    # instead of interpolating a straight line across missing periods
-    df_year = df_year.resample('h').mean()
-    t0y, t1y = df_year.dropna(how='all').index[0], df_year.dropna(how='all').index[-1]
+    t0y, t1y = df_year.index[0], df_year.index[-1]
     print(f"\n{'='*60}\nYear {year}: {t0y.strftime('%d %b %Y')} "
           f"--> {t1y.strftime('%d %b %Y')}  ({len(df_year)} filas)")
 
@@ -581,14 +559,15 @@ for year in [2025, 2026]:
     # ── Rename to T-MEDNet convention ─────────────────────────────────────────
     today_rename = pd.Timestamp.now().strftime('%Y-%m-%d')
     site_tag     = f"{SITE_CODE:02d}"
+    site_name_u  = SITE_NAME.replace(' ', '_').replace('-', '_')
     _rename_map  = {
-        'annual_T_cycle':  f"{site_tag}_2_{year}_{SITE_NAME_FILE}_{today_rename}.png",
-        'anomaly':         f"{site_tag}_4_{year}_{SITE_NAME_FILE}_{today_rename}.png",
-        'stratification':  f"{site_tag}_1_{year}_{SITE_NAME_FILE}_{today_rename}.png",
+        'annual_T_cycle':  f"{site_tag}_2_{year}_{site_name_u}_{today_rename}.png",
+        'anomaly':         f"{site_tag}_4_{year}_{site_name_u}_{today_rename}.png",
+        'stratification':  f"{site_tag}_1_{year}_{site_name_u}_{today_rename}.png",
     }
     for thr in range(23, 28):
         _rename_map[f'thresholds_{thr}C'] = \
-            f"{site_tag}_3_{thr}_{year}_{SITE_NAME_FILE}_{today_rename}.png"
+            f"{site_tag}_3_{thr}_{year}_{site_name_u}_{today_rename}.png"
 
     print()
     for fname in os.listdir(out_dir):

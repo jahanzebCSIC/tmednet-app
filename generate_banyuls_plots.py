@@ -1,17 +1,19 @@
 """
-Generates all T-MEDNet plots for Toulon / Cap Sicié (site 38):
+Generates all T-MEDNet plots for Banyuls / Park-buoy (site 8):
   T-Cycle, Anomaly, Stratification, Thresholds 23-27°C  (per year)
   Database_T .zip  +  Stat_Report .xlsx  (merged full history)
 
 Data sources:
-  Historical DB:   Toulon_(Cap Sicié)/Database_T_38_Cap Sicié_201401-202605_...zip
-  HOBO campaign:   Toulon_(Cap Sicié)/Procesados  (Jul 3 – Sep 3 2026, depths 5-50 m)
+  Historical DB:   Banyuls_(Park-buoy)/Database_T_08_Banyuls_200603-202505_...zip
+  HOBO campaign:   Banyuls_(Park-buoy)/Procesados  (Dec 2025 – Jul 2026, depths 5-40 m)
 
-Output:  Desktop/temperatures t-mednet/Cap Sicie/
+Note: 7-month gap between hist end (May 7, 2025) and HOBO start (Dec 8, 2025).
+
+Output:  Desktop/temperatures t-mednet/Banyuls/
            2025/  -->  T-Cycle, anomaly, stratification, thresholds 23-27°C
            2026/  -->  T-Cycle, anomaly, stratification, thresholds 23-27°C
-           Database_T_38_Cap_Sicie_..._<date>.zip
-           38_Stat_Report_Cap_Sicie_..._<date>.xlsx
+           Database_T_8_Banyuls_..._<date>.zip
+           8_Stat_Report_Banyuls_..._<date>.xlsx
 """
 
 import os, sys, zipfile, shutil, unicodedata
@@ -30,28 +32,26 @@ from data_manager import DataManager
 import re as _re
 
 # ── Config ────────────────────────────────────────────────────────────────────
-SITE_NAME   = "Cap Sicié"
-SITE_CODE   = 38
-MHW_CLIM_START = 2015
+SITE_NAME   = "Banyuls"
+SITE_CODE   = 8
+MHW_CLIM_START = 2007
 MHW_CLIM_END   = 2022
-HIST_ZIP    = r"C:\Users\jahan\Desktop\Tmednet datos\Toulon_(Cap Sicié)\Database_T_38_Cap Sicié_201401-202605_2026-06-28_2026-07-28.zip"
-HOBO_DIR    = r"C:\Users\jahan\Desktop\Tmednet datos\Toulon_(Cap Sicié)\Procesados"
-LAT, LON    = 43.073, 5.854
+HIST_ZIP    = r"C:\Users\jahan\Desktop\Tmednet datos\Banyuls_(Park-buoy)\Database_T_08_Banyuls_200603-202505_2025-06-30.zip"
+HOBO_DIR    = r"C:\Users\jahan\Desktop\Tmednet datos\Banyuls_(Park-buoy)\Procesados"
+LAT, LON    = 42.475, 3.130
 OUTPUT_BASE = os.path.join(os.path.expanduser("~"),
-                           "Desktop", "temperatures t-mednet", "Cap Sicie")
-SST_CSV     = os.path.join(OUTPUT_BASE, "toulon_sst_copernicus.csv")
+                           "Desktop", "temperatures t-mednet", "Banyuls")
+SST_CSV     = os.path.join(OUTPUT_BASE, "banyuls_sst_copernicus.csv")
 DPI         = 150
 
-# ASCII version of site name for filenames (strips accent from é)
 def _ascii(s):
     return unicodedata.normalize('NFKD', s).encode('ascii', 'ignore').decode('ascii')
 
-SITE_NAME_FILE = _ascii(SITE_NAME).replace(' ', '_').replace('-', '_')  # Cap_Sicie
+SITE_NAME_FILE = _ascii(SITE_NAME).replace(' ', '_').replace('-', '_')  # Banyuls
 
 COLOR_DICT = {
     '5':  '#e8504a', '10': '#f58e6e', '15': '#fca95a', '20': '#fde5a3',
     '25': '#e4f4f8', '30': '#a7d6e7', '35': '#9ec6de', '40': '#3a6daf',
-    '45': '#2a5091', '50': '#1a3070',
 }
 plt.rc('legend', fontsize='medium')
 
@@ -69,12 +69,62 @@ class _L:
 
 _HOBO_PAT = _re.compile(r'^\d+_\d{8}-\d{2}_\d{8}-\d{2}_\d+\.txt$')
 
+def _parse_hobo_direct(path):
+    """Parse a HOBO .txt file by finding the 'Temp' column header directly.
+    Handles files that have extra columns (e.g., pressure) before the temperature.
+    Masks rows where sensor status events indicate the sensor was out of water."""
+    df_raw = pd.read_csv(path, sep='\t', header=0, dtype=str)
+    # Find the temperature column (header contains 'Temp')
+    temp_cols = [c for c in df_raw.columns if 'Temp' in c and '°C' in c]
+    if not temp_cols:
+        return pd.Series(dtype=float)
+    temp_col = temp_cols[0]
+    # Find date and time columns
+    fecha_cols = [c for c in df_raw.columns if 'Fecha' in c or 'Date' in c]
+    tiempo_cols = [c for c in df_raw.columns if 'Tiempo' in c or 'Time' in c]
+    if not fecha_cols or not tiempo_cols:
+        return pd.Series(dtype=float)
+    fecha_col  = fecha_cols[0]
+    tiempo_col = tiempo_cols[0]
+    # Parse datetime — handle both 2-digit and 4-digit year
+    dt_str = df_raw[fecha_col].str.strip() + ' ' + df_raw[tiempo_col].str.strip()
+    dt = pd.to_datetime(dt_str, dayfirst=True, errors='coerce')
+    vals = pd.to_numeric(df_raw[temp_col], errors='coerce')
+    s = pd.Series(vals.values, index=dt, name='T')
+    s = s[s.index.notna()]
+
+    # Mask rows where any HOBO event column is non-empty (sensor out of water:
+    # "Acoplador separado", "Acoplador adjunto", "Host conectado", "Parado", etc.)
+    event_cols = [c for c in df_raw.columns
+                  if any(kw in c for kw in ('Acoplador', 'Host', 'Parado', 'Final'))]
+    if event_cols:
+        event_mask = df_raw[event_cols].apply(
+            lambda col: col.str.strip().fillna('').astype(bool).where(
+                col.str.strip().fillna('') != '', other=False)
+        ).any(axis=1)
+        # Expand mask ±1 row to catch transition readings
+        event_mask_exp = event_mask | event_mask.shift(1, fill_value=False) | \
+                         event_mask.shift(-1, fill_value=False)
+        s[event_mask_exp.values[:len(s)]] = np.nan
+
+    # Basic temperature range filter
+    s[s < -5]  = np.nan
+    s[s > 40]  = np.nan
+
+    # Rolling median spike filter: flag values more than 2°C from 24-hour rolling median
+    if s.notna().sum() > 48:
+        roll_med = s.rolling(window=24, center=True, min_periods=6).median()
+        spike = (s - roll_med).abs() > 2.0
+        s[spike] = np.nan
+
+    return s.sort_index()
+
 def load_hobo_dir(folder):
     dm = DataManager(_C(), [])
-    txts = tuple(sorted([
-        os.path.join(folder, f).replace('\\', '/')
-        for f in os.listdir(folder) if f.endswith('.txt') and _HOBO_PAT.match(f)
-    ]))
+    all_files = sorted([
+        f for f in os.listdir(folder) if f.endswith('.txt') and _HOBO_PAT.match(f)
+    ])
+    txts = tuple([os.path.join(folder, f).replace('\\', '/') for f in all_files])
     if not txts:
         return pd.DataFrame()
     lister = _L()
@@ -86,10 +136,31 @@ def load_hobo_dir(folder):
     df_all, depths_int, _ = dm.list_to_df()
     df_all.columns = [str(int(d)) for d in depths_int]
     df_all.index = pd.to_datetime(df_all.index)
-    return df_all.sort_index()
+    df_all = df_all.sort_index()
+
+    # Fix columns that DataManager loaded but are all-NaN (e.g., pressure-logger files
+    # where the temperature column is not in the expected position)
+    for fname in all_files:
+        m = _re.search(r'_(\d+)\.txt$', fname)
+        if not m:
+            continue
+        depth_key = str(int(m.group(1)))  # '05' -> '5'
+        if depth_key not in df_all.columns:
+            continue
+        if df_all[depth_key].notna().any():
+            continue  # DataManager read it correctly
+        # Fall back to direct header-based parsing
+        print(f"  [direct parse] {fname} (depth {depth_key}m)")
+        s = _parse_hobo_direct(os.path.join(folder, fname))
+        if s.empty:
+            continue
+        s_h = s.resample('h').mean()
+        df_all[depth_key] = s_h.reindex(df_all.index)
+
+    return df_all
 
 def read_database_t_zip(zip_path):
-    tmp = os.path.join(os.environ['TEMP'], '_toulon_hist_extract')
+    tmp = os.path.join(os.environ['TEMP'], '_banyuls_hist_extract')
     os.makedirs(tmp, exist_ok=True)
     with zipfile.ZipFile(zip_path, 'r') as zf:
         zf.extractall(tmp)
@@ -100,7 +171,7 @@ def read_database_t_zip(zip_path):
                         format='%d/%m/%Y %H:%M:%S', errors='coerce')
     df['datetime'] = dt
     df = df.dropna(subset=['datetime']).set_index('datetime').sort_index()
-    dcols = [c for c in df.columns if c not in ('Date','Time')
+    dcols = [c for c in df.columns if c not in ('Date', 'Time')
              and c.strip().lstrip('-').isdigit()]
     df = df[dcols]
     df.columns = [str(int(float(c))) for c in dcols]
@@ -116,12 +187,15 @@ print(f"  Profundidades: {list(df_hist.columns)}")
 
 print("\nCargando HOBO campaña actual...")
 df_hobo = load_hobo_dir(HOBO_DIR)
-print(f"  {df_hobo.index[0]} --> {df_hobo.index[-1]}  ({len(df_hobo)} filas)")
-print(f"  Profundidades: {sorted(df_hobo.columns.tolist(), key=int)}")
+if not df_hobo.empty:
+    print(f"  {df_hobo.index[0]} --> {df_hobo.index[-1]}  ({len(df_hobo)} filas)")
+    print(f"  Profundidades: {sorted(df_hobo.columns.tolist(), key=int)}")
+else:
+    print("  (sin archivos HOBO)")
 
 # ── 2. Merge historico + HOBO ─────────────────────────────────────────────────
 all_depth_cols = sorted(
-    {c for src in [df_hist, df_hobo] for c in src.columns},
+    {c for src in [df_hist, df_hobo] for c in src.columns if not src.empty},
     key=int)
 df_full = pd.concat(
     [src[[c for c in all_depth_cols if c in src.columns]]
@@ -156,7 +230,6 @@ if sst_series is None:
             minimum_latitude=LAT - 0.4,  maximum_latitude=LAT + 0.4,
             start_datetime="2025-01-01", end_datetime="2026-10-01",
         )
-        # Snap to nearest non-land-masked pixel
         sst_grid = ds["analysed_sst"]
         sst_mean = sst_grid.mean(dim='time')
         lats = ds.latitude.values
@@ -203,7 +276,21 @@ def _add_sst(df, depths_in_df):
     return df, ['0'] + list(depths_in_df)
 
 
+def _correct_5m_winter(df):
+    """5m HOBO pressure+temp sensor sometimes reads warm anomalies vs 10m in winter.
+    In Oct-Apr, 5m > 10m + 1.5°C is physically implausible (well-mixed column) →
+    replace those hours with the 10m value before smoothing/plotting."""
+    if '5' not in df.columns or '10' not in df.columns:
+        return df
+    df = df.copy()
+    is_winter = df.index.month.isin([10, 11, 12, 1, 2, 3, 4])
+    warm_inv = (df['5'] > df['10'] + 1.5) & is_winter
+    df.loc[warm_inv, '5'] = df.loc[warm_inv, '10']
+    return df
+
+
 def plot_annual_T_cycle(df_year, year, out_dir, hist_df=None):
+    df_year = _correct_5m_winter(df_year)
     yr = int(year)
     fig = plt.figure(figsize=(10, 5))
     ax  = fig.add_subplot(111)
@@ -250,7 +337,6 @@ def plot_annual_T_cycle(df_year, year, out_dir, hist_df=None):
         if col_full.dropna().empty:
             continue
         color = COLOR_DICT.get(col, '#333333')
-        # Rolling mean respects NaN boundaries — avoids smoothing across data gaps
         smoothed = col_full.rolling(window=360, center=True, min_periods=30).mean()
         ax.plot(smoothed.index, smoothed.values, color=color, label=col, zorder=10)
 
@@ -276,8 +362,9 @@ def plot_annual_T_cycle(df_year, year, out_dir, hist_df=None):
 
 
 def plot_anomaly(df_year, year, out_dir, hist_df=None):
+    df_year = _correct_5m_winter(df_year)
     target_year = int(year)
-    candidate = ['10', '25', '40']
+    candidate = ['5', '20', '40']
     avail_hist = list(hist_df.columns) if hist_df is not None and not hist_df.empty else []
     avail_yr   = [c for c in df_year.columns if df_year[c].notna().any()]
     depths_anom = [d for d in candidate
@@ -403,7 +490,7 @@ def plot_stratification(df_year, year, out_dir):
 
     fig = plt.figure(figsize=(10, 5))
     ax  = fig.add_subplot(111)
-    max_depth = float(depths_num[-1]) if len(depths_num) else 50.0
+    max_depth = float(depths_num[-1]) if len(depths_num) else 40.0
     ax.set_ylim(0, -max_depth)
     ax.invert_yaxis()
     if len(depths_num):
@@ -412,12 +499,28 @@ def plot_stratification(df_year, year, out_dir):
 
     if not df_window.empty and plot_dcols:
         df_plot = df_window[plot_dcols].copy()
-        # Clip pre-deployment spikes (Cap Sicié never exceeds 30°C)
-        df_plot[df_plot > 30] = np.nan
-        # Fill only 1 consecutive missing depth level from valid neighbors
-        # (limit=1 → SST at 0m fills 5m during gap; 10m+ stays blank — no over-extrapolation)
-        df_plot = df_plot.interpolate(method='linear', axis=1, limit=1)
-        df_plot = df_plot.interpolate(method='linear', axis=0, limit=12)
+        df_plot[df_plot > 32] = np.nan
+
+        # Where the 5 m sensor creates a temperature inversion (colder than both the
+        # surface SST by >2°C AND colder than 10 m), infer the 5 m value by linear
+        # interpolation between 0 m (SST) and 10 m.  This smooths away brief cold
+        # pockets that break the expected surface-to-depth gradient.
+        if '0' in df_plot.columns and '5' in df_plot.columns and '10' in df_plot.columns:
+            cold_inv = (
+                (df_plot['5'] < df_plot['0'] - 2.0) &
+                (df_plot['5'] < df_plot['10'])
+            )
+            warm_inv = (
+                (df_plot['5'] > df_plot['0'] + 2.0) &
+                (df_plot['5'] > df_plot['10'])
+            )
+            inversion = cold_inv | warm_inv
+            df_plot.loc[inversion, '5'] = (
+                df_plot.loc[inversion, '0'] + df_plot.loc[inversion, '10']
+            ) / 2.0
+
+        df_plot = df_plot.interpolate(method='linear', axis=1)
+        df_plot = df_plot.interpolate(method='linear', axis=0, limit=72)
         hmin, hmax = np.nanmin(df_plot.values), np.nanmax(df_plot.values)
         lv2 = np.arange(np.floor(hmin), hmax, 0.1)
         lv1 = np.arange(np.floor(hmin), hmax, 1)
@@ -488,6 +591,16 @@ def plot_thresholds(df_year, year, out_dir, hist_df=None):
     year_data[str(target_year)] = compute_thresh_year(jas_yr)
     all_years_t = sorted(year_data.keys())
 
+    has_data = any(
+        not np.isnan(year_data[yr][thr_check].get(d, np.nan))
+        for yr in all_years_t
+        for thr_check in range(23, 28)
+        for d in all_depths_t
+    )
+    if not has_data:
+        print(f"  [thresh]   Sin suficientes datos JAS {target_year} — omitido")
+        return
+
     markers_list = ['+', 'o', 'x', 's', 'd', '^', 'v', 'p', 'h', '*']
     colors_dec   = ['b', 'b', 'k', 'k']
     lines_dec    = ['solid', 'dotted', 'solid', 'dotted']
@@ -555,7 +668,6 @@ for year in [2025, 2026]:
     if df_year.empty:
         print(f"\nYear {year}: sin datos — omitido")
         continue
-    # Detect data gaps > 7 days (before resampling, on the raw timestamps)
     raw_gaps = df_year.index.to_series().diff()
     big_gaps = raw_gaps[raw_gaps > pd.Timedelta('7D')]
     if not big_gaps.empty:
@@ -563,8 +675,6 @@ for year in [2025, 2026]:
             gap_start = gap_end - dur
             print(f"  AVISO — Sin datos: {gap_start.strftime('%d %b')} → "
                   f"{gap_end.strftime('%d %b %Y')} ({int(dur.days)} días) — se mostrará en blanco")
-    # Resample to hourly — gaps become explicit NaN rows so plots show blank
-    # instead of interpolating a straight line across missing periods
     df_year = df_year.resample('h').mean()
     t0y, t1y = df_year.dropna(how='all').index[0], df_year.dropna(how='all').index[-1]
     print(f"\n{'='*60}\nYear {year}: {t0y.strftime('%d %b %Y')} "

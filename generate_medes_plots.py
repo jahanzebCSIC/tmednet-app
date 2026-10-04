@@ -32,12 +32,14 @@ import re as _re
 # ── Config ────────────────────────────────────────────────────────────────────
 SITE_NAME   = "Medes"
 SITE_CODE   = 6
-HIST_ZIP    = r"C:\Users\jahan\Downloads\Database_T_06_Medes_200207-202510_2025-11-04.zip"
-HOBO_DIR    = r"C:\Users\jahan\Downloads\Medes"
+MHW_CLIM_START = 2003   # Hobday climatology reference period start
+MHW_CLIM_END   = 2022   # Hobday climatology reference period end
+HIST_ZIP    = r"C:\Users\jahan\Desktop\Tmednet datos\Medes_(Pota-del-Llop)\Database_T_6_Medes_200207-202605_2026-06-28_2026-07-28.zip"
+HOBO_DIR    = r"C:\Users\jahan\Desktop\Tmednet datos\Medes_(Pota-del-Llop)\procesados"
 LAT, LON    = 42.0448, 3.2227
-SST_CSV     = r"C:\Users\jahan\Downloads\Medes\medes_sst_copernicus.csv"
 OUTPUT_BASE = os.path.join(os.path.expanduser("~"),
                            "Desktop", "temperatures t-mednet", SITE_NAME)
+SST_CSV     = os.path.join(OUTPUT_BASE, "medes_sst_copernicus.csv")
 DPI         = 150
 
 COLOR_DICT = {
@@ -122,6 +124,8 @@ df_full = df_full[all_depth_cols]
 print(f"\nDataset completo: {df_full.index[0]} --> {df_full.index[-1]}  "
       f"({len(df_full)} filas, profundidades {all_depth_cols})")
 
+os.makedirs(OUTPUT_BASE, exist_ok=True)
+
 # ── 3. Copernicus SST (0 m) for stratification ────────────────────────────────
 sst_series = None
 if os.path.exists(SST_CSV):
@@ -142,7 +146,7 @@ if sst_series is None:
             variables=["analysed_sst"],
             minimum_longitude=LON - 0.1, maximum_longitude=LON + 0.1,
             minimum_latitude=LAT - 0.1,  maximum_latitude=LAT + 0.1,
-            start_datetime="2025-05-01", end_datetime="2026-05-31",
+            start_datetime="2025-01-01", end_datetime="2026-10-01",
         )
         sst_series = ds["analysed_sst"].sel(
             latitude=LAT, longitude=LON, method="nearest").to_series()
@@ -159,6 +163,15 @@ if sst_series is None:
 # ══════════════════════════════════════════════════════════════════════════════
 # Plot helpers
 # ══════════════════════════════════════════════════════════════════════════════
+
+def _save(fig, path, **kw):
+    if os.path.exists(path):
+        try:
+            os.remove(path)
+        except OSError:
+            pass
+    fig.savefig(path, **kw)
+
 
 def _add_sst(df, depths_in_df):
     """Insert Copernicus SST as column '0' aligned to df index."""
@@ -240,7 +253,7 @@ def plot_annual_T_cycle(df_year, year, out_dir, hist_df=None):
     out = os.path.join(out_dir,
         f"{SITE_NAME.lower()}_{SITE_CODE}_annual_T_cycle"
         f"_{t0.strftime('%Y%m%d')}_{t1.strftime('%Y%m%d')}.png")
-    fig.savefig(out, dpi=DPI, bbox_inches='tight')
+    _save(fig, out, dpi=DPI, bbox_inches='tight')
     plt.close(fig)
     print(f"  [T-Cycle]  {os.path.basename(out)}  ({os.path.getsize(out)//1024} KB)")
 
@@ -357,7 +370,7 @@ def plot_anomaly(df_year, year, out_dir, hist_df=None):
     out = os.path.join(out_dir,
         f"{SITE_NAME.lower()}_{SITE_CODE}_anomaly"
         f"_{t0.strftime('%Y%m%d')}_{t1.strftime('%Y%m%d')}.png")
-    fig.savefig(out, dpi=DPI, bbox_inches='tight')
+    _save(fig, out, dpi=DPI, bbox_inches='tight')
     plt.close(fig)
     print(f"  [anomaly]  {os.path.basename(out)}  ({os.path.getsize(out)//1024} KB)")
 
@@ -386,7 +399,10 @@ def plot_stratification(df_year, year, out_dir):
     ax.set_xlim(t_may, t_dec)
 
     if not df_window.empty and plot_dcols:
-        df_plot = df_window[plot_dcols]
+        df_plot = df_window[plot_dcols].copy()
+        # Interpolate missing depth levels and short sensor dropouts
+        df_plot = df_plot.interpolate(method='linear', axis=1, limit=2)
+        df_plot = df_plot.interpolate(method='linear', axis=0, limit=12)
         hmin, hmax = np.nanmin(df_plot.values), np.nanmax(df_plot.values)
         lv2 = np.arange(np.floor(hmin), hmax, 0.1)
         lv1 = np.arange(np.floor(hmin), hmax, 1)
@@ -404,7 +420,7 @@ def plot_stratification(df_year, year, out_dir):
     out = os.path.join(out_dir,
         f"{SITE_NAME.lower()}_{SITE_CODE}_stratification"
         f"_{t0.strftime('%Y%m%d')}_{t1.strftime('%Y%m%d')}.png")
-    fig.savefig(out, dpi=DPI, bbox_inches='tight')
+    _save(fig, out, dpi=DPI, bbox_inches='tight')
     plt.close(fig)
     print(f"  [strat]    {os.path.basename(out)}  ({os.path.getsize(out)//1024} KB)")
 
@@ -510,7 +526,7 @@ def plot_thresholds(df_year, year, out_dir, hist_df=None):
         out = os.path.join(out_dir,
             f"{SITE_NAME.lower()}_{SITE_CODE}_thresholds_{thr}C"
             f"_{t0.strftime('%Y%m%d')}_{t1.strftime('%Y%m%d')}.png")
-        fig.savefig(out, dpi=DPI, bbox_inches='tight')
+        _save(fig, out, dpi=DPI, bbox_inches='tight')
         plt.close(fig)
         print(f"  [thresh {thr}C]  {os.path.basename(out)}  ({os.path.getsize(out)//1024} KB)")
 
@@ -518,8 +534,6 @@ def plot_thresholds(df_year, year, out_dir, hist_df=None):
 # ══════════════════════════════════════════════════════════════════════════════
 # Generate plots per year
 # ══════════════════════════════════════════════════════════════════════════════
-
-os.makedirs(OUTPUT_BASE, exist_ok=True)
 
 for year in [2025, 2026]:
     df_year = df_full[df_full.index.year == year].copy()
@@ -536,10 +550,34 @@ for year in [2025, 2026]:
     plot_annual_T_cycle(df_year, str(year), out_dir, hist_df=df_hist)
     plot_anomaly(df_year, str(year), out_dir, hist_df=df_hist)
     plot_stratification(df_year, str(year), out_dir)
-    if year == 2025:
-        plot_thresholds(df_year, str(year), out_dir, hist_df=df_hist)
-    else:
-        print(f"  [thresh]   JAS {year} no disponible (campaña termina en mayo) — omitido")
+    plot_thresholds(df_year, str(year), out_dir, hist_df=df_hist)
+
+    # ── Rename to T-MEDNet convention ─────────────────────────────────────────
+    today_rename = pd.Timestamp.now().strftime('%Y-%m-%d')
+    site_tag     = f"{SITE_CODE:02d}"
+    site_name_u  = SITE_NAME.replace(' ', '_').replace('-', '_')
+    _rename_map  = {
+        'annual_T_cycle':  f"{site_tag}_2_{year}_{site_name_u}_{today_rename}.png",
+        'anomaly':         f"{site_tag}_4_{year}_{site_name_u}_{today_rename}.png",
+        'stratification':  f"{site_tag}_1_{year}_{site_name_u}_{today_rename}.png",
+    }
+    for thr in range(23, 28):
+        _rename_map[f'thresholds_{thr}C'] = \
+            f"{site_tag}_3_{thr}_{year}_{site_name_u}_{today_rename}.png"
+
+    print()
+    for fname in os.listdir(out_dir):
+        if not fname.endswith('.png'):
+            continue
+        for key, new_name in _rename_map.items():
+            if key in fname:
+                src = os.path.join(out_dir, fname)
+                dst = os.path.join(out_dir, new_name)
+                if os.path.exists(dst):
+                    os.remove(dst)
+                os.rename(src, dst)
+                print(f"  [rename]  {fname}  →  {new_name}")
+                break
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -640,6 +678,65 @@ df30 = dfexcel.groupby('year')['mean']\
               .reset_index()
 df30.columns = ['year','30tmax']
 
+def _compute_mhw_sheets(dfexcel, clim_start, clim_end):
+    """Detect MHW events per depth (Hobday et al. 2016) using core/marineHeatWaves.py."""
+    try:
+        import marineHeatWaves as _mhw
+    except ImportError:
+        return pd.DataFrame(), pd.DataFrame()
+    _cn = {'Moderate': 'Moderat', 'Strong': 'Fort', 'Severe': 'Sever', 'Extreme': 'Extrem'}
+    all_ev = []
+    for depth in sorted(dfexcel['depth(m)'].unique()):
+        sub = dfexcel[dfexcel['depth(m)'] == depth][['date', 'mean']].copy()
+        sub['date'] = pd.to_datetime(sub['date'])
+        sub = sub.dropna(subset=['mean']).sort_values('date')
+        if sub.empty:
+            continue
+        fy, ly = int(sub['date'].dt.year.min()), int(sub['date'].dt.year.max())
+        es, ee = max(clim_start, fy), min(clim_end, ly)
+        if ((sub['date'].dt.year >= es) & (sub['date'].dt.year <= ee)).sum() < 365 or es >= ee:
+            continue
+        t    = np.array([d.toordinal() for d in sub['date'].dt.date])
+        temp = sub['mean'].values
+        try:
+            mhws, _ = _mhw.detect(t, temp, climatologyPeriod=[es, ee], maxPadLength=10)
+        except Exception:
+            continue
+        for i in range(mhws.get('n_events', 0)):
+            all_ev.append({
+                'year': mhws['date_start'][i].year, 'depth(m)': depth,
+                'start': mhws['date_start'][i], 'end': mhws['date_end'][i],
+                'peak_date': mhws['date_peak'][i],
+                'duration_days': int(mhws['duration'][i]),
+                'max_temp(ºC)':          round(float(mhws['intensity_max_abs'][i]),  2),
+                'max_intensity(ºC)':     round(float(mhws['intensity_max'][i]),       2),
+                'mean_intensity(ºC)':    round(float(mhws['intensity_mean'][i]),      2),
+                'cum_intensity(ºC·day)': round(float(mhws['intensity_cumulative'][i]),2),
+                'category': _cn.get(mhws['category'][i], str(mhws['category'][i])),
+                'clim_period': f'{es}-{ee}',
+            })
+    if not all_ev:
+        return pd.DataFrame(), pd.DataFrame()
+    df_mhw = pd.DataFrame(all_ev).sort_values(['depth(m)', 'start'])
+    _co = {'Moderat': 1, 'Fort': 2, 'Sever': 3, 'Extrem': 4}
+    smr = []
+    for (yr, dep), g in df_mhw.groupby(['year', 'depth(m)']):
+        wc = max(g['category'], key=lambda c: _co.get(c, 0))
+        smr.append({
+            'year': yr, 'depth(m)': dep, 'n_events': len(g),
+            'total_days': int(g['duration_days'].sum()),
+            'max_temp(ºC)':          round(float(g['max_temp(ºC)'].max()),        2),
+            'max_intensity(ºC)':     round(float(g['max_intensity(ºC)'].max()),   2),
+            'max_duration_days':     int(g['duration_days'].max()),
+            'cum_intensity(ºC·day)': round(float(g['cum_intensity(ºC·day)'].sum()), 2),
+            'worst_category': wc, 'clim_period': g['clim_period'].iloc[0],
+        })
+    return df_mhw, pd.DataFrame(smr).sort_values(['depth(m)', 'year'])
+
+
+df_mhw, df_mhw_max = _compute_mhw_sheets(dfexcel, MHW_CLIM_START, MHW_CLIM_END)
+print(f"  MHW events: {len(df_mhw)}")
+
 xl_name = f"{SITE_CODE}_Stat_Report_{SITE_NAME}_{date_range}_{today_str}.xlsx"
 xl_path = os.path.join(OUTPUT_BASE, xl_name)
 with ExcelWriter(xl_path, engine='openpyxl') as writer:
@@ -652,6 +749,8 @@ with ExcelWriter(xl_path, engine='openpyxl') as writer:
     dfmaxes_mon.to_excel(writer, sheet_name='Maxes month',       index=False)
     dfmaxes_dm.to_excel(writer,  sheet_name='Maxes depth month', index=False)
     df30.to_excel(writer,        sheet_name='30Tmax',            index=False)
+    df_mhw.to_excel(writer,      sheet_name='MHW',               index=False)
+    df_mhw_max.to_excel(writer,  sheet_name='MHW_MAX',           index=False)
 
 print(f"  [Excel]  {xl_name}  ({os.path.getsize(xl_path)//1024} KB)  <- t-outputs")
 print(f"\nHecho. Todo en: {OUTPUT_BASE}")

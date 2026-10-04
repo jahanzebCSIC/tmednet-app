@@ -1,17 +1,17 @@
 """
-Generates all T-MEDNet plots for Toulon / Cap Sicié (site 38):
+Generates all T-MEDNet plots for Mallorca S / Sa Foradada (site 35):
   T-Cycle, Anomaly, Stratification, Thresholds 23-27°C  (per year)
   Database_T .zip  +  Stat_Report .xlsx  (merged full history)
 
 Data sources:
-  Historical DB:   Toulon_(Cap Sicié)/Database_T_38_Cap Sicié_201401-202605_...zip
-  HOBO campaign:   Toulon_(Cap Sicié)/Procesados  (Jul 3 – Sep 3 2026, depths 5-50 m)
+  Historical DB:   Mallorca_S_(Sa_Foradada)/Database_T_35_Foradada_201301-202512_...zip
+  HOBO campaign:   Mallorca_S_(Sa_Foradada)/Procesados  (Dec 2025 – Jul 2026, depths 10-40 m)
 
-Output:  Desktop/temperatures t-mednet/Cap Sicie/
+Output:  Desktop/temperatures t-mednet/Sa Foradada/
            2025/  -->  T-Cycle, anomaly, stratification, thresholds 23-27°C
            2026/  -->  T-Cycle, anomaly, stratification, thresholds 23-27°C
-           Database_T_38_Cap_Sicie_..._<date>.zip
-           38_Stat_Report_Cap_Sicie_..._<date>.xlsx
+           Database_T_35_Sa Foradada_..._<date>.zip
+           35_Stat_Report_Sa Foradada_..._<date>.xlsx
 """
 
 import os, sys, zipfile, shutil, unicodedata
@@ -30,28 +30,26 @@ from data_manager import DataManager
 import re as _re
 
 # ── Config ────────────────────────────────────────────────────────────────────
-SITE_NAME   = "Cap Sicié"
-SITE_CODE   = 38
-MHW_CLIM_START = 2015
+SITE_NAME   = "Sa Foradada"
+SITE_CODE   = 35
+MHW_CLIM_START = 2014
 MHW_CLIM_END   = 2022
-HIST_ZIP    = r"C:\Users\jahan\Desktop\Tmednet datos\Toulon_(Cap Sicié)\Database_T_38_Cap Sicié_201401-202605_2026-06-28_2026-07-28.zip"
-HOBO_DIR    = r"C:\Users\jahan\Desktop\Tmednet datos\Toulon_(Cap Sicié)\Procesados"
-LAT, LON    = 43.073, 5.854
+HIST_ZIP    = r"C:\Users\jahan\Desktop\Tmednet datos\Mallorca_S_(Sa_Foradada)\Database_T_35_Foradada_201301-202512_2025-12-17.zip"
+HOBO_DIR    = r"C:\Users\jahan\Desktop\Tmednet datos\Mallorca_S_(Sa_Foradada)\Procesados"
+LAT, LON    = 39.533, 2.367
 OUTPUT_BASE = os.path.join(os.path.expanduser("~"),
-                           "Desktop", "temperatures t-mednet", "Cap Sicie")
-SST_CSV     = os.path.join(OUTPUT_BASE, "toulon_sst_copernicus.csv")
+                           "Desktop", "temperatures t-mednet", "Sa Foradada")
+SST_CSV     = os.path.join(OUTPUT_BASE, "foradada_sst_copernicus.csv")
 DPI         = 150
 
-# ASCII version of site name for filenames (strips accent from é)
 def _ascii(s):
     return unicodedata.normalize('NFKD', s).encode('ascii', 'ignore').decode('ascii')
 
-SITE_NAME_FILE = _ascii(SITE_NAME).replace(' ', '_').replace('-', '_')  # Cap_Sicie
+SITE_NAME_FILE = _ascii(SITE_NAME).replace(' ', '_').replace('-', '_')  # Sa_Foradada
 
 COLOR_DICT = {
-    '5':  '#e8504a', '10': '#f58e6e', '15': '#fca95a', '20': '#fde5a3',
-    '25': '#e4f4f8', '30': '#a7d6e7', '35': '#9ec6de', '40': '#3a6daf',
-    '45': '#2a5091', '50': '#1a3070',
+    '10': '#f58e6e', '20': '#fde5a3',
+    '25': '#e4f4f8', '30': '#a7d6e7', '40': '#3a6daf',
 }
 plt.rc('legend', fontsize='medium')
 
@@ -89,7 +87,7 @@ def load_hobo_dir(folder):
     return df_all.sort_index()
 
 def read_database_t_zip(zip_path):
-    tmp = os.path.join(os.environ['TEMP'], '_toulon_hist_extract')
+    tmp = os.path.join(os.environ['TEMP'], '_foradada_hist_extract')
     os.makedirs(tmp, exist_ok=True)
     with zipfile.ZipFile(zip_path, 'r') as zf:
         zf.extractall(tmp)
@@ -100,7 +98,7 @@ def read_database_t_zip(zip_path):
                         format='%d/%m/%Y %H:%M:%S', errors='coerce')
     df['datetime'] = dt
     df = df.dropna(subset=['datetime']).set_index('datetime').sort_index()
-    dcols = [c for c in df.columns if c not in ('Date','Time')
+    dcols = [c for c in df.columns if c not in ('Date', 'Time')
              and c.strip().lstrip('-').isdigit()]
     df = df[dcols]
     df.columns = [str(int(float(c))) for c in dcols]
@@ -116,12 +114,15 @@ print(f"  Profundidades: {list(df_hist.columns)}")
 
 print("\nCargando HOBO campaña actual...")
 df_hobo = load_hobo_dir(HOBO_DIR)
-print(f"  {df_hobo.index[0]} --> {df_hobo.index[-1]}  ({len(df_hobo)} filas)")
-print(f"  Profundidades: {sorted(df_hobo.columns.tolist(), key=int)}")
+if not df_hobo.empty:
+    print(f"  {df_hobo.index[0]} --> {df_hobo.index[-1]}  ({len(df_hobo)} filas)")
+    print(f"  Profundidades: {sorted(df_hobo.columns.tolist(), key=int)}")
+else:
+    print("  (sin archivos HOBO)")
 
 # ── 2. Merge historico + HOBO ─────────────────────────────────────────────────
 all_depth_cols = sorted(
-    {c for src in [df_hist, df_hobo] for c in src.columns},
+    {c for src in [df_hist, df_hobo] for c in src.columns if not src.empty},
     key=int)
 df_full = pd.concat(
     [src[[c for c in all_depth_cols if c in src.columns]]
@@ -156,7 +157,6 @@ if sst_series is None:
             minimum_latitude=LAT - 0.4,  maximum_latitude=LAT + 0.4,
             start_datetime="2025-01-01", end_datetime="2026-10-01",
         )
-        # Snap to nearest non-land-masked pixel
         sst_grid = ds["analysed_sst"]
         sst_mean = sst_grid.mean(dim='time')
         lats = ds.latitude.values
@@ -250,7 +250,6 @@ def plot_annual_T_cycle(df_year, year, out_dir, hist_df=None):
         if col_full.dropna().empty:
             continue
         color = COLOR_DICT.get(col, '#333333')
-        # Rolling mean respects NaN boundaries — avoids smoothing across data gaps
         smoothed = col_full.rolling(window=360, center=True, min_periods=30).mean()
         ax.plot(smoothed.index, smoothed.values, color=color, label=col, zorder=10)
 
@@ -403,7 +402,7 @@ def plot_stratification(df_year, year, out_dir):
 
     fig = plt.figure(figsize=(10, 5))
     ax  = fig.add_subplot(111)
-    max_depth = float(depths_num[-1]) if len(depths_num) else 50.0
+    max_depth = float(depths_num[-1]) if len(depths_num) else 40.0
     ax.set_ylim(0, -max_depth)
     ax.invert_yaxis()
     if len(depths_num):
@@ -412,11 +411,8 @@ def plot_stratification(df_year, year, out_dir):
 
     if not df_window.empty and plot_dcols:
         df_plot = df_window[plot_dcols].copy()
-        # Clip pre-deployment spikes (Cap Sicié never exceeds 30°C)
-        df_plot[df_plot > 30] = np.nan
-        # Fill only 1 consecutive missing depth level from valid neighbors
-        # (limit=1 → SST at 0m fills 5m during gap; 10m+ stays blank — no over-extrapolation)
-        df_plot = df_plot.interpolate(method='linear', axis=1, limit=1)
+        df_plot[df_plot > 32] = np.nan
+        df_plot = df_plot.interpolate(method='linear', axis=1, limit=2)
         df_plot = df_plot.interpolate(method='linear', axis=0, limit=12)
         hmin, hmax = np.nanmin(df_plot.values), np.nanmax(df_plot.values)
         lv2 = np.arange(np.floor(hmin), hmax, 0.1)
@@ -488,6 +484,17 @@ def plot_thresholds(df_year, year, out_dir, hist_df=None):
     year_data[str(target_year)] = compute_thresh_year(jas_yr)
     all_years_t = sorted(year_data.keys())
 
+    # Check if any year (including current) has plottable data
+    has_data = any(
+        not np.isnan(year_data[yr][thr_check].get(d, np.nan))
+        for yr in all_years_t
+        for thr_check in range(23, 28)
+        for d in all_depths_t
+    )
+    if not has_data:
+        print(f"  [thresh]   Sin suficientes datos JAS {target_year} — omitido")
+        return
+
     markers_list = ['+', 'o', 'x', 's', 'd', '^', 'v', 'p', 'h', '*']
     colors_dec   = ['b', 'b', 'k', 'k']
     lines_dec    = ['solid', 'dotted', 'solid', 'dotted']
@@ -555,7 +562,6 @@ for year in [2025, 2026]:
     if df_year.empty:
         print(f"\nYear {year}: sin datos — omitido")
         continue
-    # Detect data gaps > 7 days (before resampling, on the raw timestamps)
     raw_gaps = df_year.index.to_series().diff()
     big_gaps = raw_gaps[raw_gaps > pd.Timedelta('7D')]
     if not big_gaps.empty:
@@ -563,8 +569,6 @@ for year in [2025, 2026]:
             gap_start = gap_end - dur
             print(f"  AVISO — Sin datos: {gap_start.strftime('%d %b')} → "
                   f"{gap_end.strftime('%d %b %Y')} ({int(dur.days)} días) — se mostrará en blanco")
-    # Resample to hourly — gaps become explicit NaN rows so plots show blank
-    # instead of interpolating a straight line across missing periods
     df_year = df_year.resample('h').mean()
     t0y, t1y = df_year.dropna(how='all').index[0], df_year.dropna(how='all').index[-1]
     print(f"\n{'='*60}\nYear {year}: {t0y.strftime('%d %b %Y')} "

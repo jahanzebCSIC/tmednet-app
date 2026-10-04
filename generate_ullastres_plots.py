@@ -4,18 +4,17 @@ Generates all T-MEDNet plots for Ullastres (site 150):
   Database_T .zip  +  Stat_Report .xlsx  (merged full history)
 
 Data sources:
-  Historical DB:  Downloads/Database_T_150_Ullastres_202010-202510_2025-11-06.zip
-  HOBO campaign:  Downloads/Ullastres datos  (Oct 24 2025 – May 21 2026, depths 5-40 m)
-  Note: some HOBO files have ' (1)' suffix — handled via temp-dir rename.
+  Historical DB:   Ullastres/Database_T_150_Ullastres_202010-202605_...(1).zip
+  HOBO campaign:   Ullastres/Procesados  (May 21 – Sep 24 2026, depths 1-40 m)
 
 Output:  Desktop/temperatures t-mednet/Ullastres/
-           2025/  -->  T-Cycle, anomaly, stratification, thresholds 23-27 C
-           2026/  -->  T-Cycle, anomaly, stratification
-           Database_T_150_Ullastres_<range>_<date>.zip
-           150_Stat_Report_Ullastres_<range>_<date>.xlsx
+           2025/  -->  T-Cycle, anomaly, stratification, thresholds 23-27°C
+           2026/  -->  T-Cycle, anomaly, stratification, thresholds 23-27°C
+           Database_T_150_Ullastres_..._<date>.zip
+           150_Stat_Report_Ullastres_..._<date>.xlsx
 """
 
-import os, sys, zipfile, shutil, tempfile
+import os, sys, zipfile, shutil
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'core'))
 
 import numpy as np
@@ -33,16 +32,18 @@ import re as _re
 # ── Config ────────────────────────────────────────────────────────────────────
 SITE_NAME   = "Ullastres"
 SITE_CODE   = 150
-HIST_ZIP    = r"C:\Users\jahan\Downloads\Database_T_150_Ullastres_202010-202510_2025-11-06.zip"
-HOBO_DIR    = r"C:\Users\jahan\Downloads\Ullastres datos"
-LAT, LON    = 42.010, 3.210
-SST_CSV     = r"C:\Users\jahan\Downloads\Ullastres datos\ullastres_sst_copernicus.csv"
+MHW_CLIM_START = 2021
+MHW_CLIM_END   = 2024
+HIST_ZIP    = r"C:\Users\jahan\Desktop\Tmednet datos\Ullastres\Database_T_150_Ullastres_202010-202605_2026-06-28_2026-07-28 (1).zip"
+HOBO_DIR    = r"C:\Users\jahan\Desktop\Tmednet datos\Ullastres\Procesados"
+LAT, LON    = 41.875, 3.200
 OUTPUT_BASE = os.path.join(os.path.expanduser("~"),
                            "Desktop", "temperatures t-mednet", SITE_NAME)
+SST_CSV     = os.path.join(OUTPUT_BASE, "ullastres_sst_copernicus.csv")
 DPI         = 150
 
 COLOR_DICT = {
-    '1':  '#ff0000',
+    '1':  '#b00000',
     '5':  '#d4261d', '10': '#f58e6e', '15': '#fca95a', '20': '#fde5a3',
     '25': '#e4f4f8', '30': '#a7d6e7', '35': '#9ec6de', '40': '#3a6daf',
 }
@@ -63,56 +64,42 @@ class _L:
 _HOBO_PAT = _re.compile(r'^\d+_\d{8}-\d{2}_\d{8}-\d{2}_\d+\.txt$')
 
 def load_hobo_dir(folder):
-    """Load HOBO txt files, renaming any ' (N)' duplicates via a temp dir."""
-    tmp = tempfile.mkdtemp(prefix='ullastres_hobo_')
-    try:
-        for f in sorted(os.listdir(folder)):
-            if not f.endswith('.txt'):
-                continue
-            clean = _re.sub(r' \(\d+\)', '', f)   # remove ' (1)', ' (2)' etc.
-            if _HOBO_PAT.match(clean) and not os.path.exists(os.path.join(tmp, clean)):
-                shutil.copy2(os.path.join(folder, f), os.path.join(tmp, clean))
-
-        txts = tuple(sorted([
-            os.path.join(tmp, f).replace('\\', '/')
-            for f in os.listdir(tmp) if f.endswith('.txt')
-        ]))
-        if not txts:
-            return pd.DataFrame()
-
-        dm = DataManager(_C(), [])
-        lister = _L()
-        dm.openfile(txts, _TB(), lister)
-        dm.files = lister._i; dm.newfiles = len(dm.files); dm.load_data()
-        for dat in dm.mdata:
-            t0, t1 = dat['datainici'], dat['datafin']
-            dat['df'] = dat['df'].loc[(dat['df'].index >= t0) & (dat['df'].index <= t1)]
-        df_all, depths_int, _ = dm.list_to_df()
-        df_all.columns = [str(int(d)) for d in depths_int]
-        df_all.index = pd.to_datetime(df_all.index)
-        return df_all.sort_index()
-    finally:
-        shutil.rmtree(tmp, ignore_errors=True)
+    dm = DataManager(_C(), [])
+    txts = tuple(sorted([
+        os.path.join(folder, f).replace('\\', '/')
+        for f in os.listdir(folder) if f.endswith('.txt') and _HOBO_PAT.match(f)
+    ]))
+    if not txts:
+        return pd.DataFrame()
+    lister = _L()
+    dm.openfile(txts, _TB(), lister)
+    dm.files = lister._i; dm.newfiles = len(dm.files); dm.load_data()
+    for dat in dm.mdata:
+        t0, t1 = dat['datainici'], dat['datafin']
+        dat['df'] = dat['df'].loc[(dat['df'].index >= t0) & (dat['df'].index <= t1)]
+    df_all, depths_int, _ = dm.list_to_df()
+    df_all.columns = [str(int(d)) for d in depths_int]
+    df_all.index = pd.to_datetime(df_all.index)
+    return df_all.sort_index()
 
 def read_database_t_zip(zip_path):
-    tmp = tempfile.mkdtemp(prefix='ullastres_hist_')
-    try:
-        with zipfile.ZipFile(zip_path, 'r') as zf:
-            zf.extractall(tmp)
-            txt_name = [f for f in zf.namelist() if f.endswith('.txt')][0]
-        df = pd.read_csv(os.path.join(tmp, txt_name), sep='\t',
-                         dtype={'Date': str, 'Time': str})
-        dt = pd.to_datetime(df['Date'] + ' ' + df['Time'],
-                            format='%d/%m/%Y %H:%M:%S', errors='coerce')
-        df['datetime'] = dt
-        df = df.dropna(subset=['datetime']).set_index('datetime').sort_index()
-        dcols = [c for c in df.columns if c not in ('Date','Time')
-                 and c.strip().lstrip('-').isdigit()]
-        df = df[dcols]
-        df.columns = [str(int(float(c))) for c in dcols]
-        return df
-    finally:
-        shutil.rmtree(tmp, ignore_errors=True)
+    tmp = os.path.join(os.environ['TEMP'], '_ullastres_hist_extract')
+    os.makedirs(tmp, exist_ok=True)
+    with zipfile.ZipFile(zip_path, 'r') as zf:
+        zf.extractall(tmp)
+        txt_name = [f for f in zf.namelist() if f.endswith('.txt')][0]
+    df = pd.read_csv(os.path.join(tmp, txt_name), sep='\t',
+                     dtype={'Date': str, 'Time': str})
+    dt = pd.to_datetime(df['Date'] + ' ' + df['Time'],
+                        format='%d/%m/%Y %H:%M:%S', errors='coerce')
+    df['datetime'] = dt
+    df = df.dropna(subset=['datetime']).set_index('datetime').sort_index()
+    dcols = [c for c in df.columns if c not in ('Date','Time')
+             and c.strip().lstrip('-').isdigit()]
+    df = df[dcols]
+    df.columns = [str(int(float(c))) for c in dcols]
+    shutil.rmtree(tmp, ignore_errors=True)
+    return df
 
 # ── 1. Load data ──────────────────────────────────────────────────────────────
 print("Cargando Database_T historico...")
@@ -120,14 +107,15 @@ df_hist = read_database_t_zip(HIST_ZIP)
 print(f"  {df_hist.index[0]} --> {df_hist.index[-1]}  ({len(df_hist)} filas)")
 print(f"  Profundidades: {list(df_hist.columns)}")
 
-print("\nCargando HOBO campana actual...")
+print("\nCargando HOBO campaña actual...")
 df_hobo = load_hobo_dir(HOBO_DIR)
 print(f"  {df_hobo.index[0]} --> {df_hobo.index[-1]}  ({len(df_hobo)} filas)")
 print(f"  Profundidades: {sorted(df_hobo.columns.tolist(), key=int)}")
 
-# ── 2. Merge (dedup keep newest) ─────────────────────────────────────────────
+# ── 2. Merge historico + HOBO (full dataset, dedup keep newest) ───────────────
 all_depth_cols = sorted(
-    {c for src in [df_hist, df_hobo] for c in src.columns}, key=int)
+    {c for src in [df_hist, df_hobo] for c in src.columns},
+    key=int)
 df_full = pd.concat(
     [src[[c for c in all_depth_cols if c in src.columns]]
      for src in [df_hist, df_hobo] if not src.empty],
@@ -137,20 +125,23 @@ df_full = df_full[all_depth_cols]
 print(f"\nDataset completo: {df_full.index[0]} --> {df_full.index[-1]}  "
       f"({len(df_full)} filas, profundidades {all_depth_cols})")
 
-# ── 3. Copernicus SST ─────────────────────────────────────────────────────────
+HIST_START_YEAR = df_hist.index.year.min()
+
+os.makedirs(OUTPUT_BASE, exist_ok=True)
+
+# ── 3. Copernicus SST (0 m) for stratification ────────────────────────────────
 sst_series = None
 if os.path.exists(SST_CSV):
     try:
         _s = pd.read_csv(SST_CSV, index_col=0, parse_dates=True)
         _s.index = pd.to_datetime(_s.index).tz_localize(None)
         sst_series = _s.iloc[:, 0]
-        print(f"\nSST Copernicus cargada desde CSV: {len(sst_series)} dias "
-              f"({sst_series.index[0].date()} --> {sst_series.index[-1].date()})")
+        print(f"\nSST Copernicus cargada desde CSV: {len(sst_series)} días")
     except Exception as e:
-        print(f"\nAviso: no se pudo leer SST CSV -- {e}")
+        print(f"\nAviso: no se pudo leer SST CSV — {e}")
 
 if sst_series is None:
-    print("\nDescargando SST Copernicus 2025-05 a 2026-05...")
+    print("\nDescargando SST Copernicus...")
     try:
         import copernicusmarine
         ds = copernicusmarine.open_dataset(
@@ -158,7 +149,7 @@ if sst_series is None:
             variables=["analysed_sst"],
             minimum_longitude=LON - 0.1, maximum_longitude=LON + 0.1,
             minimum_latitude=LAT - 0.1,  maximum_latitude=LAT + 0.1,
-            start_datetime="2025-05-01", end_datetime="2026-05-31",
+            start_datetime="2025-01-01", end_datetime="2026-10-01",
         )
         sst_series = ds["analysed_sst"].sel(
             latitude=LAT, longitude=LON, method="nearest").to_series()
@@ -167,7 +158,7 @@ if sst_series is None:
         sst_series.index = pd.to_datetime(sst_series.index).tz_localize(None)
         sst_series = sst_series.dropna()
         sst_series.to_csv(SST_CSV, header=True)
-        print(f"  Guardada: {len(sst_series)} dias")
+        print(f"  Descargada y guardada: {len(sst_series)} días")
     except Exception as e:
         print(f"  SST no disponible: {e}")
 
@@ -176,60 +167,75 @@ if sst_series is None:
 # Plot helpers
 # ══════════════════════════════════════════════════════════════════════════════
 
+def _save(fig, path, **kw):
+    if os.path.exists(path):
+        try:
+            os.remove(path)
+        except OSError:
+            pass
+    fig.savefig(path, **kw)
+
+
 def _add_sst(df, depths_in_df):
+    """Insert Copernicus SST as column '0' aligned to df index."""
     if sst_series is None or sst_series.empty:
-        return df, list(depths_in_df)
+        return df, depths_in_df
     sst_h = sst_series.resample('h').interpolate(method='linear')
     sst_a = sst_h.reindex(df.index, method='nearest', tolerance=pd.Timedelta('2h'))
-    df = df.copy(); df.insert(0, '0', sst_a)
+    df = df.copy()
+    df.insert(0, '0', sst_a)
     return df, ['0'] + list(depths_in_df)
 
 
-def plot_annual_T_cycle(df_year, year, out_dir):
+def plot_annual_T_cycle(df_year, year, out_dir, hist_df=None):
     yr = int(year)
     fig = plt.figure(figsize=(10, 5))
     ax  = fig.add_subplot(111)
 
-    # Multi-year mean (historical years < yr)
-    clim_raw = df_hist[df_hist.index.year < yr]
-    avail_clim = [c for c in all_depth_cols if c in clim_raw.columns]
-    if not clim_raw.empty and avail_clim:
-        cr2 = clim_raw[avail_clim].copy()
-        cr2['_m'] = cr2.index.month; cr2['_d'] = cr2.index.day
-        daily_clim = cr2.groupby(['_m', '_d'])[avail_clim].mean()
-        dates, rows = [], []
-        for (m, d), row in daily_clim.iterrows():
-            try:
-                dates.append(pd.Timestamp(f'{yr}-{int(m):02d}-{int(d):02d}'))
-                rows.append(row)
-            except Exception:
-                pass
-        if dates:
-            ord_df = pd.DataFrame(rows, index=dates).sort_index()
-            for col in avail_clim:
-                if col in ord_df.columns:
-                    s = ord_df[col].interpolate(limit_direction='both')
-                    ord_df[col] = uniform_filter1d(s.values, size=min(30, len(ord_df)))
-            for col in avail_clim:
-                if col in ord_df.columns:
-                    ax.plot(ord_df.index, ord_df[col], color='#e9e8e8',
-                            label='_nolegend_', zorder=5)
-            prev_col = None
-            for col in avail_clim:
-                if col not in ord_df.columns: continue
-                if prev_col is not None:
-                    ax.fill_between(ord_df.index, ord_df[prev_col], ord_df[col],
-                                    facecolor='lightgrey', zorder=0)
-                prev_col = col
-            ax.text(0.1, 0.1, "multi-year mean", backgroundcolor='grey',
-                    transform=ax.transAxes, color='white', fontsize=9)
+    # ── Multi-year mean ───────────────────────────────────────────────────────
+    if hist_df is not None and not hist_df.empty:
+        clim_raw = hist_df[hist_df.index.year < yr]
+        avail = [c for c in all_depth_cols if c in clim_raw.columns and c != '0']
+        if not clim_raw.empty and avail:
+            clim_raw2 = clim_raw[avail].copy()
+            clim_raw2['_m'] = clim_raw2.index.month
+            clim_raw2['_d'] = clim_raw2.index.day
+            daily_clim = clim_raw2.groupby(['_m', '_d'])[avail].mean()
+            dates, rows = [], []
+            for (m, d), row in daily_clim.iterrows():
+                try:
+                    dates.append(pd.Timestamp(f'{yr}-{int(m):02d}-{int(d):02d}'))
+                    rows.append(row)
+                except Exception:
+                    pass
+            if dates:
+                ord_df = pd.DataFrame(rows, index=dates).sort_index()
+                for col in avail:
+                    if col in ord_df.columns:
+                        s = ord_df[col].interpolate(limit_direction='both')
+                        ord_df[col] = uniform_filter1d(s.values, size=min(30, len(ord_df)))
+                for col in avail:
+                    if col in ord_df.columns:
+                        ax.plot(ord_df.index, ord_df[col], color='#e9e8e8',
+                                label='_nolegend_', zorder=5)
+                prev_col = None
+                for col in avail:
+                    if col not in ord_df.columns:
+                        continue
+                    if prev_col is not None:
+                        ax.fill_between(ord_df.index, ord_df[prev_col], ord_df[col],
+                                        facecolor='lightgrey', zorder=0)
+                    prev_col = col
+                ax.text(0.1, 0.1, "multi-year mean", backgroundcolor='grey',
+                        transform=ax.transAxes, color='white', fontsize=9)
 
-    # Current year (NaN-preserving smooth)
-    plot_cols = [c for c in all_depth_cols if c in df_year.columns]
+    # ── Current year (NaN-preserving smooth) ─────────────────────────────────
+    plot_cols = [c for c in all_depth_cols if c in df_year.columns and c != '0']
     for col in plot_cols:
-        col_full = df_year[col]
+        col_full = df_year[col] if col in df_year.columns else pd.Series(dtype=float)
         nona = col_full.dropna()
-        if nona.empty: continue
+        if nona.empty:
+            continue
         color = COLOR_DICT.get(col, '#333333')
         smoothed_vals = uniform_filter1d(nona.values, size=min(360, len(nona)))
         smoothed = pd.Series(smoothed_vals, index=nona.index).reindex(col_full.index)
@@ -241,7 +247,8 @@ def plot_annual_T_cycle(df_year, year, out_dir):
         ax.set_yticks(np.arange(10, int(np.nanmax(vals)) + 2, 2))
     ax.set_xlim([pd.Timestamp(f'{yr}-01-01'), pd.Timestamp(f'{yr+1}-01-01')])
     ax.legend(title='Depth (m)')
-    ax.set(ylabel='Temperature (C) smoothed', title=f'{SITE_NAME}  year {year}')
+    ax.set(ylabel='Temperature (ºC) smoothed',
+           title=f'{SITE_NAME}  year {year}')
     ax.xaxis.set_major_locator(mdates.MonthLocator())
     ax.xaxis.set_major_formatter(mdates.DateFormatter('%b'))
 
@@ -249,55 +256,61 @@ def plot_annual_T_cycle(df_year, year, out_dir):
     out = os.path.join(out_dir,
         f"{SITE_NAME.lower()}_{SITE_CODE}_annual_T_cycle"
         f"_{t0.strftime('%Y%m%d')}_{t1.strftime('%Y%m%d')}.png")
-    fig.savefig(out, dpi=DPI, bbox_inches='tight')
+    _save(fig, out, dpi=DPI, bbox_inches='tight')
     plt.close(fig)
     print(f"  [T-Cycle]  {os.path.basename(out)}  ({os.path.getsize(out)//1024} KB)")
 
 
-def plot_anomaly(df_year, year, out_dir):
+def plot_anomaly(df_year, year, out_dir, hist_df=None):
     target_year = int(year)
+    # Prefer [10, 25, 40]; fall back gracefully
     candidate = ['10', '25', '40']
+    avail_hist = list(hist_df.columns) if hist_df is not None and not hist_df.empty else []
+    avail_yr   = [c for c in df_year.columns if df_year[c].notna().any()]
     depths_anom = [d for d in candidate
-                   if d in df_full.columns
-                   and df_full.loc[df_full.index.year == target_year, d].notna().any()
-                   and d in df_hist.columns]
+                   if d in avail_yr and (d in avail_hist or hist_df is None)]
     if not depths_anom:
-        print(f"  [anomaly]  Sin profundidades comunes -- omitido")
+        depths_anom = [c for c in avail_yr if c in avail_hist][:3]
+    if not depths_anom:
+        print(f"  [anomaly]  Sin profundidades comunes — omitido")
         return
 
+    # Build full-year index (MM-DD strings)
     full_idx = pd.date_range('2020-01-01', '2020-12-31', freq='D').strftime('%m-%d').tolist()
+
     last_legend_dict, this_legend_dict = {}, {}
     concated = None
 
-    hist_start_yr = df_hist.index.year.min()
-
     for depth in depths_anom:
-        clim_lbl = f"{hist_start_yr}-{target_year-1} Climatology ({depth}m)"
+        clim_lbl = f"{HIST_START_YEAR}-{target_year-1} Climatology ({depth}m)"
         curr_lbl = f"{target_year} ({depth}m)"
         last_legend_dict[depth] = clim_lbl
         this_legend_dict[depth] = curr_lbl
 
-        # Climatology: historical years < target_year, smoothed
-        col_hist = df_hist[depth].dropna()
-        col_hist = col_hist[col_hist.index.year < target_year]
-        if not col_hist.empty:
-            sm = uniform_filter1d(col_hist.values, size=min(360, len(col_hist)))
-            col_hist_sm = pd.Series(sm, index=col_hist.index)
-            tmp = pd.DataFrame({'val': col_hist_sm.values,
-                                'month': col_hist_sm.index.month,
-                                'day': col_hist_sm.index.day})
-            grp = tmp.groupby(['month', 'day'])['val'].mean()
-            clim_s = pd.Series(np.nan, index=full_idx, name=clim_lbl)
-            for (m, d), v in grp.items():
-                k = f'{int(m):02d}-{int(d):02d}'
-                if k in clim_s.index: clim_s[k] = v
+        # ── Climatology: historical years < target_year, smoothed ────────────
+        if hist_df is not None and not hist_df.empty and depth in hist_df.columns:
+            col_hist = hist_df[depth].dropna()
+            col_hist = col_hist[col_hist.index.year < target_year]
+            if not col_hist.empty:
+                smoothed_vals = uniform_filter1d(col_hist.values, size=min(360, len(col_hist)))
+                col_hist_sm = pd.Series(smoothed_vals, index=col_hist.index)
+                tmp = pd.DataFrame({'val': col_hist_sm.values,
+                                    'month': col_hist_sm.index.month,
+                                    'day': col_hist_sm.index.day})
+                grp = tmp.groupby(['month', 'day'])['val'].mean()
+                clim_s = pd.Series(np.nan, index=full_idx, name=clim_lbl)
+                for (m, d), v in grp.items():
+                    k = f'{int(m):02d}-{int(d):02d}'
+                    if k in clim_s.index: clim_s[k] = v
+            else:
+                clim_s = pd.Series(np.nan, index=full_idx, name=clim_lbl)
         else:
             clim_s = pd.Series(np.nan, index=full_idx, name=clim_lbl)
 
-        # Current year: from merged dataset, raw daily mean, no filter
-        df_yr_comb = df_full.loc[df_full.index.year == target_year]
-        if depth in df_yr_comb.columns:
-            col_yr = df_yr_comb[depth].dropna()
+        # ── Current year: raw daily mean, no filter ───────────────────────────
+        if depth in df_year.columns:
+            col_yr = df_year[depth].dropna()
+            col_yr = col_yr[col_yr.index.year == target_year]
             tmp2 = pd.DataFrame({'val': col_yr.values,
                                  'month': col_yr.index.month,
                                  'day': col_yr.index.day})
@@ -312,6 +325,7 @@ def plot_anomaly(df_year, year, out_dir):
         pair = pd.concat([clim_s, curr_s], axis=1)
         concated = pair if concated is None else pd.concat([concated, pair], axis=1)
 
+    # ── Plot (numeric x-axis — avoids categorical fill_between bug) ───────────
     _x_idx    = np.arange(len(concated))
     _idx_list = list(concated.index)
     fig = plt.figure(figsize=(10, 5))
@@ -328,11 +342,10 @@ def plot_anomaly(df_year, year, out_dir):
         _lc, = ax.plot(_x_idx, _y_clim, color=_color, linewidth=0.7, alpha=1.0)
         ax.plot(_x_idx, _y_curr, color=_color, linewidth=0.7, alpha=0.7)
         _plotted_lines.append(_lc)
-        valid = ~np.isnan(_y_clim) & ~np.isnan(_y_curr)
-        ax.fill_between(_x_idx, _y_clim, _y_curr,
-                        where=(valid & (_y_curr > _y_clim)), color='#fa5a5a')
-        ax.fill_between(_x_idx, _y_clim, _y_curr,
-                        where=(valid & (_y_curr < _y_clim)), color='#5aaaff')
+        ax.fill_between(_x_idx, _y_clim, _y_curr, where=(_y_curr > _y_clim),
+                        color='#fa5a5a')
+        ax.fill_between(_x_idx, _y_clim, _y_curr, where=(_y_curr < _y_clim),
+                        color='#5aaaff')
         try:
             from labellines import labelLine as _labelLine
             _labelLine(_lc, 200 + int(depth), label=depth, fontsize=9,
@@ -345,7 +358,8 @@ def plot_anomaly(df_year, year, out_dir):
     _month_labels = ['Jan','Feb','Mar','Apr','May','Jun',
                      'Jul','Aug','Sep','Oct','Nov','Dec']
     _tick_pos    = [_idx_list.index(c) for c in _month_codes if c in _idx_list]
-    _tick_labels = [_month_labels[i] for i, c in enumerate(_month_codes) if c in _idx_list]
+    _tick_labels = [_month_labels[i] for i, c in enumerate(_month_codes)
+                    if c in _idx_list]
     ax.set_xticks(_tick_pos); ax.set_xticklabels(_tick_labels)
     ax.set_xlim(0, len(concated) - 1)
     plt.xlabel('')
@@ -359,10 +373,9 @@ def plot_anomaly(df_year, year, out_dir):
     out = os.path.join(out_dir,
         f"{SITE_NAME.lower()}_{SITE_CODE}_anomaly"
         f"_{t0.strftime('%Y%m%d')}_{t1.strftime('%Y%m%d')}.png")
-    fig.savefig(out, dpi=DPI, bbox_inches='tight')
+    _save(fig, out, dpi=DPI, bbox_inches='tight')
     plt.close(fig)
     print(f"  [anomaly]  {os.path.basename(out)}  ({os.path.getsize(out)//1024} KB)")
-    print(f"    Profundidades: {depths_anom}")
 
 
 def plot_stratification(df_year, year, out_dir):
@@ -370,31 +383,39 @@ def plot_stratification(df_year, year, out_dir):
     t_may = pd.Timestamp(f'{yr}-05-01')
     t_dec = pd.Timestamp(f'{yr}-12-01')
 
-    in_situ_cols = [c for c in df_year.columns if c.strip().lstrip('-').isdigit()]
-    df_sst, depth_cols_sst = _add_sst(df_year, in_situ_cols)
+    # Add SST (0m) layer; exclude depths shallower than 5m so SST covers the surface
+    in_situ_dcols = [c for c in df_year.columns
+                     if c.strip().lstrip('-').isdigit() and int(c) >= 5]
+    df_sst, depth_cols_with_sst = _add_sst(df_year, in_situ_dcols)
     df_window = df_sst[(df_sst.index >= t_may) & (df_sst.index < t_dec)]
 
-    plot_dcols = [c for c in depth_cols_sst
-                  if not df_window.empty and df_window[c].notna().any()]
+    plot_dcols = [c for c in depth_cols_with_sst if df_window[c].notna().any()] \
+                 if not df_window.empty else []
     depths_num = np.array([float(c) for c in plot_dcols]) if plot_dcols else np.array([])
 
     fig = plt.figure(figsize=(10, 5))
     ax  = fig.add_subplot(111)
     max_depth = float(depths_num[-1]) if len(depths_num) else 40.0
-    ax.set_ylim(0, -max_depth); ax.invert_yaxis()
+    ax.set_ylim(0, -max_depth)
+    ax.invert_yaxis()
     if len(depths_num):
         ax.set_yticks([-d for d in depths_num if d == int(d)])
     ax.set_xlim(t_may, t_dec)
 
     if not df_window.empty and plot_dcols:
-        df_plot = df_window[plot_dcols]
+        df_plot = df_window[plot_dcols].copy()
+        # Remove pre-deployment / out-of-water readings (Mediterranean max ~30°C)
+        df_plot[df_plot > 32] = np.nan
+        # Interpolate missing depth levels and short sensor dropouts
+        df_plot = df_plot.interpolate(method='linear', axis=1, limit=2)
+        df_plot = df_plot.interpolate(method='linear', axis=0, limit=12)
         hmin, hmax = np.nanmin(df_plot.values), np.nanmax(df_plot.values)
         lv2 = np.arange(np.floor(hmin), hmax, 0.1)
         lv1 = np.arange(np.floor(hmin), hmax, 1)
         cf = ax.contourf(df_plot.index.to_pydatetime(), -depths_num,
                          df_plot.values.T, 256, extend='both',
                          cmap='RdYlBu_r', levels=lv2)
-        plt.colorbar(cf, ax=ax, label='Temperature (C)', ticks=lv1)
+        plt.colorbar(cf, ax=ax, label='Temperature (ºC)', ticks=lv1)
 
     ax.set(ylabel='Depth (m)', title=f'{SITE_NAME} {year}')
     ax.xaxis.set_major_locator(mdates.MonthLocator())
@@ -405,28 +426,35 @@ def plot_stratification(df_year, year, out_dir):
     out = os.path.join(out_dir,
         f"{SITE_NAME.lower()}_{SITE_CODE}_stratification"
         f"_{t0.strftime('%Y%m%d')}_{t1.strftime('%Y%m%d')}.png")
-    fig.savefig(out, dpi=DPI, bbox_inches='tight')
+    _save(fig, out, dpi=DPI, bbox_inches='tight')
     plt.close(fig)
     print(f"  [strat]    {os.path.basename(out)}  ({os.path.getsize(out)//1024} KB)")
 
 
-def plot_thresholds(df_year, year, out_dir):
+def plot_thresholds(df_year, year, out_dir, hist_df=None):
     target_year = int(year)
-    jas_yr   = df_year[(df_year.index.month >= 7) & (df_year.index.month <= 9)]
-    jas_hist = df_hist[(df_hist.index.month >= 7) & (df_hist.index.month <= 9) &
-                       (df_hist.index.year < target_year)]
+
+    # JAS depths: union of hist and current year
+    jas_yr = df_year[(df_year.index.month >= 7) & (df_year.index.month <= 9)]
+    if hist_df is not None and not hist_df.empty:
+        jas_hist = hist_df[(hist_df.index.month >= 7) & (hist_df.index.month <= 9) &
+                           (hist_df.index.year < target_year)]
+        all_depths_t = sorted(
+            set(jas_hist.columns.tolist()) | set(jas_yr.columns.tolist()), key=int)
+    else:
+        jas_hist = pd.DataFrame()
+        all_depths_t = sorted(jas_yr.columns.tolist(), key=int)
 
     if jas_yr.empty:
-        print(f"  [thresh]   Sin datos JAS {target_year} -- omitido")
+        print(f"  [thresh]   Sin datos JAS {target_year} — omitido")
         return
 
-    all_depths_t = sorted(
-        set(jas_hist.columns.tolist()) | set(jas_yr.columns.tolist()), key=int)
     all_depths_t = [d for d in all_depths_t if d.strip().lstrip('-').isdigit()]
     depths_int_t = np.array([int(d) for d in all_depths_t])
     maxdepth_t   = int(depths_int_t.max())
 
-    def compute_thresh(df_jas):
+    # Validity mask: < 720 h (30 days) or > 240 records below the max --> NaN
+    def compute_thresh_year(df_jas):
         N_rec = {d: int(df_jas[d].dropna().__len__()) if d in df_jas.columns else 0
                  for d in all_depths_t}
         max_N = max(N_rec.values()) if N_rec else 0
@@ -443,10 +471,13 @@ def plot_thresholds(df_year, year, out_dir):
             result[thr] = row
         return result
 
+    # Build year_data dict
     year_data = {}
-    for yr in sorted(jas_hist.index.year.unique()):
-        year_data[str(yr)] = compute_thresh(jas_hist[jas_hist.index.year == yr])
-    year_data[str(target_year)] = compute_thresh(jas_yr)
+    if not jas_hist.empty:
+        for yr in sorted(jas_hist.index.year.unique()):
+            year_data[str(yr)] = compute_thresh_year(
+                jas_hist[jas_hist.index.year == yr])
+    year_data[str(target_year)] = compute_thresh_year(jas_yr)
     all_years_t = sorted(year_data.keys())
 
     markers_list = ['+', 'o', 'x', 's', 'd', '^', 'v', 'p', 'h', '*']
@@ -476,7 +507,8 @@ def plot_thresholds(df_year, year, out_dir):
         ax.set_ylim(0, maxdepth_t + 2)
         ax.set_xlim(-2, max(int(maxdays) + 2, 5))
         ax.set_xticks(np.arange(0, max(int(maxdays) + 2, 5), ticks))
-        ax.invert_yaxis(); ax.xaxis.tick_top()
+        ax.invert_yaxis()
+        ax.xaxis.tick_top()
         ax.xaxis.grid(True, linestyle='dashed')
 
         for yr in all_years_t:
@@ -500,7 +532,7 @@ def plot_thresholds(df_year, year, out_dir):
         out = os.path.join(out_dir,
             f"{SITE_NAME.lower()}_{SITE_CODE}_thresholds_{thr}C"
             f"_{t0.strftime('%Y%m%d')}_{t1.strftime('%Y%m%d')}.png")
-        fig.savefig(out, dpi=DPI, bbox_inches='tight')
+        _save(fig, out, dpi=DPI, bbox_inches='tight')
         plt.close(fig)
         print(f"  [thresh {thr}C]  {os.path.basename(out)}  ({os.path.getsize(out)//1024} KB)")
 
@@ -509,30 +541,53 @@ def plot_thresholds(df_year, year, out_dir):
 # Generate plots per year
 # ══════════════════════════════════════════════════════════════════════════════
 
-os.makedirs(OUTPUT_BASE, exist_ok=True)
-
 for year in [2025, 2026]:
     df_year = df_full[df_full.index.year == year].copy()
     if df_year.empty:
-        print(f"\nYear {year}: sin datos -- omitido"); continue
+        print(f"\nYear {year}: sin datos — omitido")
+        continue
     t0y, t1y = df_year.index[0], df_year.index[-1]
-    print(f"\n{'='*60}\nYear {year}: {t0y.strftime('%d %b %Y')} --> "
-          f"{t1y.strftime('%d %b %Y')}  ({len(df_year)} filas)")
+    print(f"\n{'='*60}\nYear {year}: {t0y.strftime('%d %b %Y')} "
+          f"--> {t1y.strftime('%d %b %Y')}  ({len(df_year)} filas)")
 
     out_dir = os.path.join(OUTPUT_BASE, str(year))
     os.makedirs(out_dir, exist_ok=True)
 
-    plot_annual_T_cycle(df_year, str(year), out_dir)
-    plot_anomaly(df_year, str(year), out_dir)
+    plot_annual_T_cycle(df_year, str(year), out_dir, hist_df=df_hist)
+    plot_anomaly(df_year, str(year), out_dir, hist_df=df_hist)
     plot_stratification(df_year, str(year), out_dir)
-    if year == 2025:
-        plot_thresholds(df_year, str(year), out_dir)
-    else:
-        print(f"  [thresh]   JAS {year} no disponible (campana termina en mayo) -- omitido")
+    plot_thresholds(df_year, str(year), out_dir, hist_df=df_hist)
+
+    # ── Rename to T-MEDNet convention ─────────────────────────────────────────
+    today_rename = pd.Timestamp.now().strftime('%Y-%m-%d')
+    site_tag     = str(SITE_CODE)
+    site_name_u  = SITE_NAME.replace(' ', '_').replace('-', '_')
+    _rename_map  = {
+        'annual_T_cycle':  f"{site_tag}_2_{year}_{site_name_u}_{today_rename}.png",
+        'anomaly':         f"{site_tag}_4_{year}_{site_name_u}_{today_rename}.png",
+        'stratification':  f"{site_tag}_1_{year}_{site_name_u}_{today_rename}.png",
+    }
+    for thr in range(23, 28):
+        _rename_map[f'thresholds_{thr}C'] = \
+            f"{site_tag}_3_{thr}_{year}_{site_name_u}_{today_rename}.png"
+
+    print()
+    for fname in os.listdir(out_dir):
+        if not fname.endswith('.png'):
+            continue
+        for key, new_name in _rename_map.items():
+            if key in fname:
+                src = os.path.join(out_dir, fname)
+                dst = os.path.join(out_dir, new_name)
+                if os.path.exists(dst):
+                    os.remove(dst)
+                os.rename(src, dst)
+                print(f"  [rename]  {fname}  →  {new_name}")
+                break
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# Database_T merged
+# Database_T merged  (historical + HOBO)
 # ══════════════════════════════════════════════════════════════════════════════
 
 print("\n" + "="*60)
@@ -580,21 +635,18 @@ for col in insitu_cols:
     agg_d['depth(m)'] = depth
     daily_p.append(agg_d[['date','depth(m)','N','mean','std','max','min']])
 
-    agg_m = df_full.groupby([ex_year, ex_month])[col]\
-                   .agg(['count','mean','std','max','min']).round(3)
+    agg_m = df_full.groupby([ex_year, ex_month])[col].agg(['count','mean','std','max','min']).round(3)
     agg_m.columns = ['N','mean','std','max','min']
     agg_m = agg_m.reset_index(); agg_m.columns = ['year','month','N','mean','std','max','min']
     agg_m['depth(m)'] = depth
     for thr in [24, 25, 26]:
         agg_m[f'Ndays>={thr}'] = np.round(
-            (df_full[col] >= thr).astype(int)
-            .groupby([ex_year, ex_month]).sum().values / 24)
+            (df_full[col] >= thr).astype(int).groupby([ex_year, ex_month]).sum().values / 24)
     monthly_p.append(agg_m[['year','month','depth(m)','N','mean','std','max','min',
                               'Ndays>=24','Ndays>=25','Ndays>=26']])
 
     if not df_season.empty and col in df_season.columns:
-        agg_s = df_season.groupby(s_year)[col]\
-                         .agg(['count','mean','std','max','min']).round(3)
+        agg_s = df_season.groupby(s_year)[col].agg(['count','mean','std','max','min']).round(3)
         agg_s.columns = ['N','mean','std','max','min']
         agg_s = agg_s.reset_index(); agg_s.columns = ['year','N','mean','std','max','min']
         agg_s['season'] = 3; agg_s['depth(m)'] = depth
@@ -632,6 +684,65 @@ df30 = dfexcel.groupby('year')['mean']\
               .reset_index()
 df30.columns = ['year','30tmax']
 
+def _compute_mhw_sheets(dfexcel, clim_start, clim_end):
+    """Detect MHW events per depth (Hobday et al. 2016) using core/marineHeatWaves.py."""
+    try:
+        import marineHeatWaves as _mhw
+    except ImportError:
+        return pd.DataFrame(), pd.DataFrame()
+    _cn = {'Moderate': 'Moderat', 'Strong': 'Fort', 'Severe': 'Sever', 'Extreme': 'Extrem'}
+    all_ev = []
+    for depth in sorted(dfexcel['depth(m)'].unique()):
+        sub = dfexcel[dfexcel['depth(m)'] == depth][['date', 'mean']].copy()
+        sub['date'] = pd.to_datetime(sub['date'])
+        sub = sub.dropna(subset=['mean']).sort_values('date')
+        if sub.empty:
+            continue
+        fy, ly = int(sub['date'].dt.year.min()), int(sub['date'].dt.year.max())
+        es, ee = max(clim_start, fy), min(clim_end, ly)
+        if ((sub['date'].dt.year >= es) & (sub['date'].dt.year <= ee)).sum() < 365 or es >= ee:
+            continue
+        t    = np.array([d.toordinal() for d in sub['date'].dt.date])
+        temp = sub['mean'].values
+        try:
+            mhws, _ = _mhw.detect(t, temp, climatologyPeriod=[es, ee], maxPadLength=10)
+        except Exception:
+            continue
+        for i in range(mhws.get('n_events', 0)):
+            all_ev.append({
+                'year': mhws['date_start'][i].year, 'depth(m)': depth,
+                'start': mhws['date_start'][i], 'end': mhws['date_end'][i],
+                'peak_date': mhws['date_peak'][i],
+                'duration_days': int(mhws['duration'][i]),
+                'max_temp(ºC)':          round(float(mhws['intensity_max_abs'][i]),  2),
+                'max_intensity(ºC)':     round(float(mhws['intensity_max'][i]),       2),
+                'mean_intensity(ºC)':    round(float(mhws['intensity_mean'][i]),      2),
+                'cum_intensity(ºC·day)': round(float(mhws['intensity_cumulative'][i]),2),
+                'category': _cn.get(mhws['category'][i], str(mhws['category'][i])),
+                'clim_period': f'{es}-{ee}',
+            })
+    if not all_ev:
+        return pd.DataFrame(), pd.DataFrame()
+    df_mhw = pd.DataFrame(all_ev).sort_values(['depth(m)', 'start'])
+    _co = {'Moderat': 1, 'Fort': 2, 'Sever': 3, 'Extrem': 4}
+    smr = []
+    for (yr, dep), g in df_mhw.groupby(['year', 'depth(m)']):
+        wc = max(g['category'], key=lambda c: _co.get(c, 0))
+        smr.append({
+            'year': yr, 'depth(m)': dep, 'n_events': len(g),
+            'total_days': int(g['duration_days'].sum()),
+            'max_temp(ºC)':          round(float(g['max_temp(ºC)'].max()),        2),
+            'max_intensity(ºC)':     round(float(g['max_intensity(ºC)'].max()),   2),
+            'max_duration_days':     int(g['duration_days'].max()),
+            'cum_intensity(ºC·day)': round(float(g['cum_intensity(ºC·day)'].sum()), 2),
+            'worst_category': wc, 'clim_period': g['clim_period'].iloc[0],
+        })
+    return df_mhw, pd.DataFrame(smr).sort_values(['depth(m)', 'year'])
+
+
+df_mhw, df_mhw_max = _compute_mhw_sheets(dfexcel, MHW_CLIM_START, MHW_CLIM_END)
+print(f"  MHW events: {len(df_mhw)}")
+
 xl_name = f"{SITE_CODE}_Stat_Report_{SITE_NAME}_{date_range}_{today_str}.xlsx"
 xl_path = os.path.join(OUTPUT_BASE, xl_name)
 with ExcelWriter(xl_path, engine='openpyxl') as writer:
@@ -644,6 +755,8 @@ with ExcelWriter(xl_path, engine='openpyxl') as writer:
     dfmaxes_mon.to_excel(writer, sheet_name='Maxes month',       index=False)
     dfmaxes_dm.to_excel(writer,  sheet_name='Maxes depth month', index=False)
     df30.to_excel(writer,        sheet_name='30Tmax',            index=False)
+    df_mhw.to_excel(writer,      sheet_name='MHW',               index=False)
+    df_mhw_max.to_excel(writer,  sheet_name='MHW_MAX',           index=False)
 
 print(f"  [Excel]  {xl_name}  ({os.path.getsize(xl_path)//1024} KB)  <- t-outputs")
 print(f"\nHecho. Todo en: {OUTPUT_BASE}")

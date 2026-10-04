@@ -1,0 +1,68 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=DM+Serif+Display&display=swap');
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --teal-900: #0d3d4f;
+  --teal-800: #124e65;
+  --teal-700: #1a6b8a;
+  --teal-600: #2589ad;
+  --teal-400: #4db8d8;
+  --teal-200: #b3e3f0;
+  --teal-50:  #f0fafd;
+  --sand-100: #f5f2ed;
+  --sand-200: #ede8df;
+  --ink:      #1c2b38;
+  --ink-60:   #6b8091;
+  --ink-30:   #b0c0ca;
+  --white:    #ffffff;
+  --warm:     #e8934a;
+  --severe:   #d94f3d;
+  --moderate: #f0c040;
+  --strong:   #e8934a;
+  --nav-h:    60px;
+}
+
+html, body { height: 100%; }
+body {
+  font-family: 'Inter', sans-serif;
+  background: var(--sand-100);
+  color: var(--ink);
+  line-height: 1.6;
+  font-size: 15px;
+}
+#root { height: 100%; display: flex; flex-direction: column; }
+
+a { color: inherit; text-decoration: none; }
+button { cursor: pointer; border: none; background: none; font-family: inherit; }
+
+.leaflet-container { height: 100%; width: 100%; }
+
+/* ── MPA popup ─────────────────────────────────────────────────────────────── */
+.mpa-popup .leaflet-popup-content-wrapper {
+  border-radius: 10px;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.18);
+  padding: 0;
+  overflow: hidden;
+}
+.mpa-popup .leaflet-popup-content {
+  margin: 0;
+  padding: 12px 14px 10px;
+  box-sizing: border-box;
+}
+.mpa-popup .leaflet-popup-tip-container {
+  margin-top: -1px;
+}
+.mpa-popup .leaflet-popup-close-button {
+  top: 6px;
+  right: 8px;
+  font-size: 16px;
+  color: #999;
+}
+.mpa-popup .leaflet-popup-close-button:hover {
+  color: #333;
+}
+/* recharts tooltip inside popup */
+.mpa-popup .recharts-tooltip-wrapper {
+  font-size: 0.7rem !important;
+}

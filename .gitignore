@@ -45,6 +45,16 @@ data/output_images/
 # Local config overrides
 *.local.py
 
+# SST satellite cache (large downloaded data, not source)
+cache/
+
+# Generated Excel / PDF outputs (reproducible from scripts)
+*.xlsx
+*.pdf
+
+# Log files
+*.log
+
 # Development / exploration scripts (not part of the distributable)
 generate_graph.py
 hoboware_export.py
